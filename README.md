@@ -1,6 +1,6 @@
 This is a directory for common DL code including models, adversarial attacks, supervised training. This is provides easy ways to extend models and training paradigms.
 
-> * Models
+## Models
 
 ImageNet (and similarly large) models are taken from [timm](https://github.com/rwightman/pytorch-image-models). 
 CIFAR10/100 model schemas differ a little from ImageNet models.
@@ -36,7 +36,7 @@ To get intermediate layer representations:
 ```
 
 
-> * Datasets
+## Datasets
 
 Standard dataloaders from torchvision + support for custom datasets. Many dataset classes taken from [robustness](https://github.com/MadryLab/robustness) and [robust-models-transfer](https://github.com/Microsoft/robust-models-transfer)
 
@@ -59,7 +59,7 @@ Model dependent data augmentations:
 ```
 
 
-> * Training
+## Training
 
 Supports different losses (eg: adversarial training), different optimizers (all included in ``timm``)
 
@@ -81,7 +81,7 @@ Example of supervised training (adversarial):
 # show an example of adversarial training
 ```
 
-> * Adversarial Attacks
+## Adversarial Attacks
 
 Attack module in [robustness](https://github.com/MadryLab/robustness). Also includes spatial attacks, taken from [adversarial_spatial](https://github.com/MadryLab/adversarial_spatial).
 
