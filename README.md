@@ -7,53 +7,55 @@ CIFAR10/100 model schemas differ a little from ImageNet models.
 
 Example of initializing a (random) model (in case dataset isn't specified in ``dataset``, initializes an ImageNet model):
 
-.. code-block:: python
-    import architectures as arch
+```python
+import architectures as arch
 
-    dataset = 'cifar10'
-    model = 'resnet18'
+dataset = 'cifar10'
+model = 'resnet18'
 
-    m = arch.create_model(model, dataset)
-    # m has randomly initialized weights
-
+m = arch.create_model(model, dataset)
+# m has randomly initialized weights
+```
 
 Initializing with user-defined pre-trained weights:
 
-.. code-block:: python
-    import architectures as arch
+```python
+import architectures as arch
 
-    dataset = 'imagenet'
-    model = 'resnet18'
-    pretrained = True
-    checkpoint_path = './checkpoint.best.pt'
+dataset = 'imagenet'
+model = 'resnet18'
+pretrained = True
+checkpoint_path = './checkpoint.best.pt'
 
-    m = arch.create_model(model, dataset, pretrained=pretrained, checkpoint_path=checkpoint_path)
-    # m takes weights from specified path
-
+m = arch.create_model(model, dataset, pretrained=pretrained, checkpoint_path=checkpoint_path)
+# m takes weights from specified path
+```
 
 Initializing with pre-trained weights in ``timm``:
 
-.. code-block:: python
-    import architectures as arch
+```python
+import architectures as arch
 
-    dataset = 'cifar10'
-    model = 'resnet18'
-    pretrained = True
+dataset = 'cifar10'
+model = 'resnet18'
+pretrained = True
 
-    m = arch.create_model(model, dataset, pretrained=pretrained)
-    # m has pretrained weights as defined in timm
-
+m = arch.create_model(model, dataset, pretrained=pretrained)
+# m has pretrained weights as defined in timm
+```
 
 To perform inference:
 
-.. code-block:: python
-    # show an example of inference
+```python
+# show an example of inference
+```
 
 
 To get intermediate layer representations:
 
-.. code-block:: python
-    # show an example of obtaining feature maps of ResNet
+```python
+# show an example of obtaining feature maps of ResNet
+```
 
 
 ## Datasets
@@ -62,21 +64,23 @@ Standard dataloaders from torchvision + support for custom datasets. Many datase
 
 Initializing datasets:
 
-.. code-block:: python
+```python
 # show an example of initializing datasets
+```
 
 
 Datasets with custom data augmentations:
 
-.. code-block:: python
+```python
 # show the use of data augmentation callback
+```
 
 
 Model dependent data augmentations:
 
-.. code-block:: python
+```python
 # example of model dependent data aug, eg: worst-of-K spatial augmentations
-
+```
 
 
 ## Training
@@ -91,14 +95,16 @@ Uses [robustness](https://github.com/MadryLab/robustness) for attack module used
 
 Example of supervised training (standard):
 
-.. code-block:: python
-    # show an example os using PyTorch-Lightning here
+```python
+# show an example os using PyTorch-Lightning here
+```
 
 
 Example of supervised training (adversarial):
 
-.. code-block:: python
-    # show an example of adversarial training
+```python
+# show an example of adversarial training
+```
 
 
 ## Adversarial Attacks
@@ -107,14 +113,14 @@ Attack module in [robustness](https://github.com/MadryLab/robustness). Also incl
 
 To do adversarial attack on models, wrap them in the ``Attack`` module. Here's an example:
 
-.. code-block:: python
-    # Show how to do L_inf PGD attack on an ImageNet ResNet
+```python
+# Show how to do L_inf PGD attack on an ImageNet ResNet
+```
 
 
 To do spatial attacks:
 
-.. code-block:: python
-    # Show an example of worst-of-K and first order spatial attacks
-
-
+```python
+# Show an example of worst-of-K and first order spatial attacks
+```
 
