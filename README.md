@@ -1,26 +1,47 @@
-This is a directory for common DL code including models, adversarial attacks, supervised training. This is provides easy ways to extend models and training paradigms.
+This is a directory for common DL code including models, adversarial attacks, supervised training. This is provides easy ways to extend models and training paradigms. This provides a smooth interface between many SOTA libraries like ``timm``, ``robustness``, ``vissl``. All the code relies on PyTorch and PyTorch-Lightning.
 
 ## Models
 
 ImageNet (and similarly large) models are taken from [timm](https://github.com/rwightman/pytorch-image-models). 
 CIFAR10/100 model schemas differ a little from ImageNet models.
 
-Example of initializing a model (in case dataset isn't specified in ``dataset``, initializes an ImageNet model):
+Example of initializing a (random) model (in case dataset isn't specified in ``dataset``, initializes an ImageNet model):
 
 ```
-# show an example here
+import architectures as arch
+
+dataset = 'cifar10'
+model = 'resnet18'
+
+m = arch.create_model(model, dataset)
+# m has randomly initialized weights
 ```
 
 Initializing with user-defined pre-trained weights:
 
 ```
-# show an example where pretrained weights are user specified
+import architectures as arch
+
+dataset = 'imagenet'
+model = 'resnet18'
+pretrained = True
+checkpoint_path = './checkpoint.best.pt'
+
+m = arch.create_model(model, dataset, pretrained=pretrained, checkpoint_path=checkpoint_path)
+# m takes weights from specified path
 ```
 
 Initializing with pre-trained weights in ``timm``:
 
 ```
-# show some resnets taken from timm
+import architectures as arch
+
+dataset = 'cifar10'
+model = 'resnet18'
+pretrained = True
+
+m = arch.create_model(model, dataset, pretrained=pretrained)
+# m has pretrained weights as defined in timm
 ```
 
 To perform inference:
