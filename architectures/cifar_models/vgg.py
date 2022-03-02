@@ -1,4 +1,5 @@
 '''VGG11/13/16/19 in Pytorch.'''
+from .registry import register_model_name
 import torch
 import torch.nn as nn
 from typing import Iterator
@@ -75,19 +76,18 @@ class VGG(nn.Module):
         layers += [nn.AvgPool2d(kernel_size=1, stride=1)]
         return nn.Sequential(*layers)
 
-def VGG11(**kwargs):
+@register_model_name
+def vgg11(**kwargs):
     return VGG('VGG11', **kwargs)
 
-def VGG13(**kwargs):
+@register_model_name
+def vgg13(**kwargs):
     return VGG('VGG13', **kwargs)
 
-def VGG16(**kwargs):
+@register_model_name
+def vgg16(**kwargs):
     return VGG('VGG16', **kwargs)
 
-def VGG19(**kwargs):
+@register_model_name
+def vgg19(**kwargs):
     return VGG('VGG19', **kwargs)
-
-vgg11 = VGG11
-vgg13 = VGG13
-vgg16 = VGG16
-vgg19 = VGG19

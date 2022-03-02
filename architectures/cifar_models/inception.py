@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 
+from .registry import register_model_name
 
 class BasicConv2d(nn.Module):
 
@@ -327,8 +328,8 @@ class InceptionV3(nn.Module):
             return out, latent
         return out
 
-
+@register_model_name
 def inceptionv3(*args, **kwargs):
     return InceptionV3(*args, **kwargs)
 
-inception_v3 = inceptionv3
+inceptionv3

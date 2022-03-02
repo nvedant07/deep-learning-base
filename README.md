@@ -5,7 +5,7 @@ This is a directory for common DL code including models, adversarial attacks, su
 ImageNet (and similarly large) models are taken from [timm](https://github.com/rwightman/pytorch-image-models). 
 CIFAR10/100 model schemas differ a little from ImageNet models.
 
-Example of initializing a (random) model (in case dataset isn't specified in ``dataset``, initializes an ImageNet model):
+Example of initializing a (random) model (in case dataset isn't specified in ``datasets.dataset_metadata``, initializes an ImageNet model):
 
 ```python
 import architectures as arch
@@ -14,7 +14,20 @@ dataset = 'cifar10'
 model = 'resnet18'
 
 m = arch.create_model(model, dataset)
-# m has randomly initialized weights
+# m has randomly initialized weights with default seed
+```
+
+Example of initializing a (random) model with a different seed:
+
+```python
+import architectures as arch
+
+dataset = 'cifar10'
+model = 'resnet18'
+seed = 42
+
+m = arch.create_model(model, dataset, seed=seed)
+# m has randomly initialized weights with seed=42
 ```
 
 Initializing with user-defined pre-trained weights:
@@ -124,3 +137,11 @@ To do spatial attacks:
 # Show an example of worst-of-K and first order spatial attacks
 ```
 
+## Unit Tests
+
+To run unit tests:
+
+```bash
+cd tests
+pytest
+```

@@ -10,6 +10,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from .custom_modules import SequentialWithArgs, FakeReLU
 from . import models
+from .registry import register_model_name
 import torchvision
 
 class BasicBlock(nn.Module):
@@ -314,61 +315,51 @@ class ResNet(nn.Module):
             return final, all_ops[layer_num - 1]
         return final
 
-def ResNet18(**kwargs):
+@register_model_name
+def resnet18(**kwargs):
     # return torchvision.models.resnet18(pretrained=False, num_classes=10)
     return ResNet(BasicBlock, [2,2,2,2], **kwargs)
 
-def ResNet18Wide(**kwargs):
+@register_model_name
+def resnet18wide(**kwargs):
     return ResNet(BasicBlock, [2,2,2,2], wm=5, **kwargs)
 
-def ResNet18Thin(**kwargs):
-    return ResNet(BasicBlock, [2,2,2,2], wd=.75, **kwargs)
+@register_model_name
+def resnet18thin(**kwargs):
+    return ResNet(BasicBlock, [2,2,2,2], wm=.75, **kwargs)
 
-def ResNet34(**kwargs):
+@register_model_name
+def resnet34(**kwargs):
     return ResNet(BasicBlock, [3,4,6,3], **kwargs)
 
-def ResNet50(**kwargs):
+@register_model_name
+def resnet50(**kwargs):
     return ResNet(Bottleneck, [3,4,6,3], **kwargs)
 
-def ResNet101(**kwargs):
+@register_model_name
+def resnet101(**kwargs):
     return ResNet(Bottleneck, [3,4,23,3], **kwargs)
 
-def ResNet152(**kwargs):
+@register_model_name
+def resnet152(**kwargs):
     return ResNet(Bottleneck, [3,8,36,3], **kwargs)
 
-def SparseResNet18(relu=False, sparsities=[0.5,0.4,0.3,0.2], sparse_func='reg', bias=False, **kwargs):
+@register_model_name
+def sparseresnet18(relu=False, sparsities=[0.5,0.4,0.3,0.2], sparse_func='reg', bias=False, **kwargs):
     return SparseResNet(SparseBasicBlock, [2,2,2,2], sparsities, use_relu=relu, sparse_func=sparse_func, bias=bias)
 
-def SparseResNet34(relu=False, sparsities=[0.5,0.4,0.3,0.2], sparse_func='reg', bias=False, **kwargs):
+@register_model_name
+def sparseresnet34(relu=False, sparsities=[0.5,0.4,0.3,0.2], sparse_func='reg', bias=False, **kwargs):
     return SparseResNet(SparseBasicBlock, [3,4,6,3], sparsities, use_relu=relu, sparse_func=sparse_func, bias=bias)
 
-def SparseResNet50(relu=False, sparsities=[0.5,0.4,0.3,0.2], sparse_func='reg', bias=False, **kwargs):
+@register_model_name
+def sparseresnet50(relu=False, sparsities=[0.5,0.4,0.3,0.2], sparse_func='reg', bias=False, **kwargs):
     return SparseResNet(SparseBottleneck, [3,4,6,3], sparsities, use_relu=relu, sparse_func=sparse_func, bias=bias)
 
-def SparseResNet101(relu=False, sparsities=[0.5,0.4,0.3,0.2], sparse_func='reg', bias=False, **kwargs):
+@register_model_name
+def sparseresnet101(relu=False, sparsities=[0.5,0.4,0.3,0.2], sparse_func='reg', bias=False, **kwargs):
     return SparseResNet(SparseBottleneck, [3,4,23,3], sparsities, use_relu=relu, sparse_func=sparse_func, bias=bias)
 
-def SparseResNet152(relu=False, sparsities=[0.5,0.4,0.3,0.2], sparse_func='reg', bias=False, **kwargs):
+@register_model_name
+def sparseresnet152(relu=False, sparsities=[0.5,0.4,0.3,0.2], sparse_func='reg', bias=False, **kwargs):
     return SparseResNet(SparseBottleneck, [3,8,36,3], sparsities, use_relu=relu, sparse_func=sparse_func, bias=bias)
-
-def SparseResNet152_ImageNet(relu=False, sparsities=[0.5,0.4,0.3,0.2], sparse_func='reg', bias=False, **kwargs):
-    return SparseResNet_ImageNet(SparseBottleneck, [3,8,36,3], sparsities, sparse_func=sparse_func, bias=bias)
-
-resnet50 = ResNet50
-resnet18 = ResNet18
-resnet101 = ResNet101
-resnet152 = ResNet152
-resnet18wide = ResNet18Wide
-resnet34 = ResNet34
-sparseresnet18 = SparseResNet18
-sparseresnet34 = SparseResNet34
-sparseresnet50 = SparseResNet50
-sparseresnet101 = SparseResNet101
-sparseresnet152 = SparseResNet152
-
-# resnet18thin = ResNet18Thin
-def test():
-    net = ResNet18()
-    y = net(torch.randn(1,3,32,32))
-    print(y.size())
-

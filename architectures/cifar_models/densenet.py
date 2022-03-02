@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from .custom_modules import FakeReLU
+from .registry import register_model_name
 
 
 class Bottleneck(nn.Module):
@@ -149,28 +150,18 @@ class DenseNet(nn.Module):
             return out, latent
         return out
 
-def DenseNet121(**kwargs):
+@register_model_name
+def densenet121(**kwargs):
     return DenseNet(Bottleneck, [6,12,24,16], growth_rate=32, **kwargs)
 
-def DenseNet169(**kwargs):
-    return DenseNet(Bottleneck, [6,12,32,32], growth_rate=32, **kwargs)
-
-def DenseNet201(**kwargs):
-    return DenseNet(Bottleneck, [6,12,48,32], growth_rate=32, **kwargs)
-
-def DenseNet161(**kwargs):
+@register_model_name
+def densenet161(**kwargs):
     return DenseNet(Bottleneck, [6,12,36,24], growth_rate=48, **kwargs)
 
-def densenet_cifar(*args, **kwargs):
-    return DenseNet(Bottleneck, [6,12,24,16], growth_rate=12, **kwargs)
+@register_model_name
+def densenet169(**kwargs):
+    return DenseNet(Bottleneck, [6,12,32,32], growth_rate=32, **kwargs)
 
-densenet121 = DenseNet121
-densenet161 = DenseNet161
-densenet169 = DenseNet169
-densenet201 = DenseNet201
-
-def test():
-    net = densenet_cifar()
-    x = torch.randn(1,3,32,32)
-    y = net(x)
-    print(y)
+@register_model_name
+def densenet201(**kwargs):
+    return DenseNet(Bottleneck, [6,12,48,32], growth_rate=32, **kwargs)
