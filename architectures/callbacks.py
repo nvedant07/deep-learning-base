@@ -3,8 +3,8 @@ from pytorch_lightning.core.lightning import LightningModule
 import torch.nn as nn
 import torch
 from torch.optim import SGD, lr_scheduler
-from collections.abc import Callable
-from typing import Optional
+import torchmetrics
+from typing import Optional, Callable
 from .utils import InputNormalize
 from datasets import dataset_metadata as ds
 
@@ -20,8 +20,8 @@ class LightningWrapper(LightningModule):
     """
     def __init__(self, 
                  model: nn.Module, 
-                 mean: Optional[torch.Tensor[float]] = None, 
-                 std: Optional[torch.Tensor[float]] = None, 
+                 mean: Optional[torch.Tensor] = None, 
+                 std: Optional[torch.Tensor] = None, 
                  loss: Optional[Callable] = None, 
                  lr: Optional[float] = None, 
                  weight_decay: Optional[float] = None, 
@@ -29,7 +29,11 @@ class LightningWrapper(LightningModule):
                  step_lr_gamma: Optional[float] = None, 
                  momentum: Optional[float] = None, 
                  dataset_name: Optional[str] = None):
+        super().__init__()
         self.model = model
+        self.accuracy_top1 = torchmetrics.Accuracy(top_k=1)
+        self.accuracy_top5 = torchmetrics.Accuracy(top_k=5)
+
         assert dataset_name or (mean and std), \
             'Both dataset_name and (mean, std) cannot be None'
         if not (mean and std):
@@ -60,11 +64,8 @@ class LightningWrapper(LightningModule):
     
     def training_step_end(self, training_step_outputs):
         ## use this for compatibility with ddp2 and dp
-        pred, true = [], []
-        for op in training_step_outputs:
-            pred.append(op['pred'])
-            true.append(op['gt'])
-        return self.loss(torch.cat(pred), torch.cat(true))
+        pred, true = training_step_outputs['pred'], training_step_outputs['gt']
+        return self.loss(pred, true)
     
     def validation_step(self, batch, batch_idx):
         x, y = batch
@@ -73,11 +74,10 @@ class LightningWrapper(LightningModule):
     
     def validation_step_end(self, validation_step_outputs):
         ## use this for compatibility with ddp2 and dp
-        pred, true = [], []
-        for op in validation_step_outputs:
-            pred.append(op['pred'])
-            true.append(op['gt'])
-        return self.loss(torch.cat(pred), torch.cat(true))
+        pred, true = validation_step_outputs['pred'], validation_step_outputs['gt']
+        return {'loss': self.loss(pred, true),
+                'acc5': self.accuracy_top5(pred, true), 
+                'acc1': self.accuracy_top1(pred, true)}
     
     def test_step(self, batch, batch_idx):
         x, y = batch
@@ -86,12 +86,21 @@ class LightningWrapper(LightningModule):
     
     def test_step_end(self, test_step_outputs):
         ## use this for compatibility with ddp2 and dp
-        pred, true = [], []
-        for op in test_step_outputs:
-            pred.append(op['pred'])
-            true.append(op['gt'])
-        return {'loss': self.loss(torch.cat(pred), torch.cat(true)),
-                'acc': }
+        ## test_step_outputs here has all the splits aggregated
+        pred, true = test_step_outputs['pred'], test_step_outputs['gt']
+        return {'loss': self.loss(pred, true),
+                'acc5': self.accuracy_top5(pred, true), 
+                'acc1': self.accuracy_top1(pred, true),
+                'num_samples': len(true)}
+    
+    def test_epoch_end(self, test_outputs):
+        accs1, accs5, samples = [], [], []
+        for op in test_outputs:
+            accs1.append(op['acc1'] * op['num_samples'])
+            accs5.append(op['acc5'] * op['num_samples'])
+            samples.append(op['num_samples'])
+        self.log(f'Acc1', sum(accs1)/sum(samples))
+        self.log(f'Acc5', sum(accs5)/sum(samples))
 
     def configure_optimizers(self):
         optimizer = SGD(self.parameters(), self.lr, momentum=self.momentum,

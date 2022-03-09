@@ -20,7 +20,7 @@ def test_random_inits(dataset_name):
                 diff.append(not torch.all(m1.weight == m2.weight))
         ## some attention heads have same weights regardless of init, 
         ## however some layers should have different weights as a result of different seeds
-        assert torch.sum(diff) > 0, f'For {model_name}, all modules had same weights!'
+        assert sum(diff) > 0, f'For {model_name}, all modules had same weights!'
 
         # models initialized with same seed should have exact same initial weights
         models = []
@@ -31,12 +31,24 @@ def test_random_inits(dataset_name):
                 assert torch.all(m1.weight == m2.weight), \
                     f'{model_name}\n\n{m1name}: {m1}\n{m2name}: {m2}\n{m1.weight == m2.weight}'
 
+@pytest.fixture(scope='session')
+def imagenet_path(pytestconfig):
+    return pytestconfig.getoption('imagenet_path')
+
+@pytest.fixture(scope='session')
+def data_path(pytestconfig):
+    return pytestconfig.getoption('data_path')
 
 @pytest.mark.parametrize('dataset_name,model_name,weights_path', 
                         [('cifar10', 'resnet18', './weights/resnet18_cifar.pt'), 
                          ('imagenet', 'resnet18', './weights/resnet18_l2eps3_imagenet.pt')])
-def test_load_weights(dataset_name, model_name, weights_path):
+def test_load_weights(dataset_name, model_name, weights_path, data_path, imagenet_path):
     m1 = arch.create_model(model_name, dataset_name, checkpoint_path=weights_path, 
         callback=partial(LightningWrapper, dataset_name=dataset_name))
-    trainer = Trainer()
-    acc = trainer.test(m1, datamodule=)['acc']
+    dm = DATA_MODULES[dataset_name](data_dir=imagenet_path if dataset_name == 'imagenet' else data_path)
+    trainer = Trainer(gpus=1, auto_select_gpus=True, deterministic=True)
+    acc = trainer.test(m1, datamodule=dm)[0]['Acc1']
+    if dataset_name == 'cifar10':
+        assert acc > 0.9
+    elif dataset_name == 'imagenet':
+        assert acc > 0.5

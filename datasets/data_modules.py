@@ -3,8 +3,7 @@ from torchvision import datasets, transforms
 from torch.utils.data import random_split, DataLoader, Dataset, Sampler
 import pytorch_lightning as pl
 from pytorch_lightning import utilities as pl_utils
-from typing import Iterable, Optional, Sequence, Union
-from collections.abc import Callable
+from typing import Iterable, Optional, Sequence, Union, Callable
 from .dataset_metadata import DATASET_PARAMS
 
 
