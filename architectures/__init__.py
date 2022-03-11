@@ -49,8 +49,8 @@ def create_model(model_name: str,
         should_custom_load = loading_function != load_pretrained_weights and pretrained and checkpoint_path
         model = timm.create_model(model_name, 
                                   num_classes=ds.DATASET_PARAMS[dataset_name]['num_classes'],
-                                  pretrained=pretrained if not should_custom_load else False, 
-                                  checkpoint_path=checkpoint_path if not should_custom_load else '')
+                                  pretrained=False if should_custom_load else pretrained, 
+                                  checkpoint_path='' if should_custom_load else checkpoint_path)
         if should_custom_load:    loading_function(model, pretrained, checkpoint_path)
 
     return callback(model)

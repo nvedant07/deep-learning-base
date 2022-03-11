@@ -143,5 +143,7 @@ To run unit tests:
 
 ```bash
 cd tests
-pytest
+pytest -c conftest.py --data_path="../../data" --imagenet_path="/NS/twitter_archive/work/vnanda/data"
 ```
+
+Replace the paths with the actual paths
