@@ -44,7 +44,7 @@ m = arch.create_model(model, dataset, pretrained=pretrained, checkpoint_path=che
 # m takes weights from specified path
 ```
 
-Initializing with pre-trained weights in ``timm``:
+Initializing with pre-trained weights in ``timm`` (ImageNet only):
 
 ```python
 import architectures as arch
@@ -57,10 +57,26 @@ m = arch.create_model(model, dataset, pretrained=pretrained)
 # m has pretrained weights as defined in timm
 ```
 
-To perform inference:
+To perform inference (using PyTorch Lightning):
 
 ```python
-# show an example of inference
+
+from datasets.data_modules import DATA_MODULES
+from architectures.callbacks import LightningWrapper
+from functools import partial
+
+dataset = 'imagenet'
+model = 'resnet50'
+devices = 2
+
+m = arch.create_model(model, dataset, pretrained=pretrained, 
+                      callback=partial(LightningWrapper, dataset_name=dataset))
+dm = DATA_MODULES[dataset](data_dir='./data')
+
+trainer = Trainer(accelerator='gpu', devices=devices,
+                  strategy=DDPPlugin(find_unused_parameters=False) if devices > 1 else None, 
+                  auto_select_gpus=True, deterministic=True)
+acc = trainer.test(m1, datamodule=dm)
 ```
 
 
@@ -78,7 +94,26 @@ Standard dataloaders from torchvision + support for custom datasets. Many datase
 Initializing datasets:
 
 ```python
-# show an example of initializing datasets
+
+from datasets.data_modules import DATA_MODULES
+
+dataset = 'imagenet'
+
+dm = DATA_MODULES[dataset](data_dir='./data')
+# dm is an instance of pl.LightningDataModule
+
+# to access training data
+for x, y in dm.train_dataloader():
+    ...
+
+# to access validation data
+for x, y in dm.val_dataloader():
+    ...
+
+# to access test data
+for x, y in dm.test_dataloader():
+    ...
+
 ```
 
 
@@ -109,7 +144,45 @@ Uses [robustness](https://github.com/MadryLab/robustness) for attack module used
 Example of supervised training (standard):
 
 ```python
-# show an example os using PyTorch-Lightning here
+from pytorch_lightning import utilities as pl_utils
+from pytorch_lightning.trainer.trainer import Trainer
+from pytorch_lightning.plugins import DDPPlugin
+from training import NicerModelCheckpointing, LitProgressBar
+import architectures as arch
+from architectures.callbacks import LightningWrapper
+from datasets.data_modules import DATA_MODULES
+from datasets.dataset_metadata import DATASET_PARAMS
+from functools import partial
+
+model = 'resnet50'
+seed = 420
+devices = 1
+
+m1 = arch.create_model(model, dataset, pretrained=False, 
+                       checkpoint_path='', seed=seed, 
+                       callback=partial(LightningWrapper, dataset_name='cifar10'))
+dm = DATA_MODULES['cifar10'](data_dir='./data')
+
+pl_utils.seed.seed_everything(seed, workers=True)
+
+checkpointer = NicerModelCheckpointing(dirpath=f'checkpoints/{dataset}/{model}', 
+                               filename='{epoch}', 
+                               every_n_epochs=5, 
+                               save_top_k=5, 
+                               save_last=False,
+                               verbose=True,
+                               mode='min', 
+                               monitor='val_loss')
+## always use ddp for multi-GPU training -- works much faster, does not split batches
+trainer = Trainer(accelerator='gpu', devices=devices,
+                  strategy=DDPPlugin(find_unused_parameters=False) if devices > 1 else None, 
+                  auto_select_gpus=True, deterministic=True,
+                  max_epochs=DATASET_PARAMS[dataset]['epochs'],
+                  check_val_every_n_epoch=1,
+                  callbacks=[LitProgressBar(['running_acc']), # can pass any quantity to be monitored during training, must be logged by the LightningModule in `train_step_end` for it to be displayed during training
+                             checkpointer])
+trainer.fit(m1, datamodule=dm)
+
 ```
 
 
@@ -117,6 +190,18 @@ Example of supervised training (adversarial):
 
 ```python
 # show an example of adversarial training
+```
+
+Example of self-supervised learning (SimCLR):
+
+```python
+# show an example of SimCLR from vissl
+```
+
+Example of self-supervised learning (BYOL):
+
+```python
+# show an example of BYOL from vissl
 ```
 
 
@@ -143,7 +228,9 @@ To run unit tests:
 
 ```bash
 cd tests
-pytest -c conftest.py --data_path="../../data" --imagenet_path="/NS/twitter_archive/work/vnanda/data"
+pytest -c conftest.py \
+--data_path="../../data" \
+--imagenet_path="/NS/twitter_archive/work/vnanda/data"
 ```
 
 Replace the paths with the actual paths

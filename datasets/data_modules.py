@@ -21,6 +21,7 @@ class BaseDataModule(pl.LightningDataModule):
                  batch_sampler: Optional[Union[Sampler[Sequence], Iterable[Sequence]]] = None, 
                  transform_train: Optional[Callable] = None, 
                  transform_test: Optional[Callable] = None, 
+                 val_frac: int = 0.1,
                  **dataset_kwargs):
         super().__init__()
         self.data_dir = data_dir
@@ -38,17 +39,18 @@ class BaseDataModule(pl.LightningDataModule):
         self.transform_train = transform_train
         self.transform_test = transform_test
         self.random_split = random_split
+        self.val_frac = val_frac
 
     def train_dataloader(self):
         return DataLoader(self.train_ds, batch_size=self.batch_size, 
             batch_sampler=self.batch_sampler, shuffle=self.shuffle_train, 
             num_workers=self.workers, pin_memory=self.pin_memory)
-    
-    def val_loader(self):
+
+    def val_dataloader(self):
         return DataLoader(self.val_ds, batch_size=self.batch_size, 
             batch_sampler=self.batch_sampler, shuffle=self.shuffle_val, 
             num_workers=self.workers, pin_memory=self.pin_memory)
-    
+
     def test_dataloader(self):
         return DataLoader(self.test_ds, batch_size=self.batch_size,             
             batch_sampler=self.batch_sampler, shuffle=self.shuffle_test, 
@@ -63,7 +65,7 @@ class CIFAR10DataModule(BaseDataModule):
             self.transform_train = DATASET_PARAMS['cifar10']['transform_train']
         if self.batch_size is None:
             self.batch_size = DATASET_PARAMS['cifar10']['batch_size']
-    
+
     def prepare_data(self):
         ## only needed when data needs to be downloaded
         self.dataset_class(self.data_dir, train=True, download=True)
@@ -74,7 +76,7 @@ class CIFAR10DataModule(BaseDataModule):
         if stage in (None, 'fit'):
             full_ds = self.dataset_class(root=self.data_dir, train=True, 
                 transform=self.transform_train, **self.dataset_kwargs)
-            train_size = int(0.9*len(full_ds))
+            train_size = int((1-self.val_frac)*len(full_ds))
             self.train_ds, self.val_ds = random_split(full_ds, [train_size, len(full_ds) - train_size])
         if stage in (None, 'test'):
             self.test_ds = self.dataset_class(root=self.data_dir, train=False, transform=self.transform_test, **self.dataset_kwargs)
@@ -99,7 +101,7 @@ class CIFAR100DataModule(BaseDataModule):
         if stage in (None, 'fit'):
             full_ds = self.dataset_class(root=self.data_dir, train=True, 
                 transform=self.transform_train, **self.dataset_kwargs)
-            train_size = int(0.9*len(full_ds))
+            train_size = int((1-self.val_frac)*len(full_ds))
             self.train_ds, self.val_ds = random_split(full_ds, [train_size, len(full_ds) - train_size])
             self.val_ds.__setattr__('transform', self.transform_test)
         if stage in (None, 'test'):
@@ -153,7 +155,7 @@ class ImageNetDataModule(BaseDataModule):
         if stage in (None, 'fit'):
             full_ds = self.dataset_class(root=self.data_dir, split='train', 
                 transform=self.transform_train, **self.dataset_kwargs)
-            train_size = int(0.9*len(full_ds))
+            train_size = int((1-self.val_frac)*len(full_ds))
             self.train_ds, self.val_ds = random_split(full_ds, [train_size, len(full_ds) - train_size])
             self.val_ds.__setattr__('transform', self.transform_test)
         if stage in (None, 'test'):

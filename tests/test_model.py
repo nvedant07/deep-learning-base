@@ -46,7 +46,6 @@ def data_path(pytestconfig):
                          ('imagenet', 'resnet18', './weights/resnet18_l2eps3_imagenet.pt')])
 def test_load_weights(dataset_name, model_name, weights_path, data_path, imagenet_path):
     weights_path = os.path.abspath(weights_path)
-    print (weights_path)
     m1 = arch.create_model(model_name, dataset_name, pretrained=True, checkpoint_path=weights_path, 
         callback=partial(LightningWrapper, dataset_name=dataset_name))
     dm = DATA_MODULES[dataset_name](data_dir=imagenet_path if dataset_name == 'imagenet' else data_path)
