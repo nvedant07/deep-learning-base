@@ -174,12 +174,15 @@ checkpointer = NicerModelCheckpointing(dirpath=f'checkpoints/{dataset}/{model}',
                                mode='min', 
                                monitor='val_loss')
 ## always use ddp for multi-GPU training -- works much faster, does not split batches
+## can pass any quantity to LitProgressBar to be
+## monitored during training, must be logged by the LightningModule 
+## in `train_step_end` for it to be displayed during training
 trainer = Trainer(accelerator='gpu', devices=devices,
                   strategy=DDPPlugin(find_unused_parameters=False) if devices > 1 else None, 
                   auto_select_gpus=True, deterministic=True,
                   max_epochs=DATASET_PARAMS[dataset]['epochs'],
                   check_val_every_n_epoch=1,
-                  callbacks=[LitProgressBar(['running_acc']), # can pass any quantity to be monitored during training, must be logged by the LightningModule in `train_step_end` for it to be displayed during training
+                  callbacks=[LitProgressBar(['running_acc']), 
                              checkpointer])
 trainer.fit(m1, datamodule=dm)
 
