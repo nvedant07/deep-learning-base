@@ -192,7 +192,44 @@ trainer.fit(m1, datamodule=dm)
 Example of supervised training (adversarial):
 
 ```python
-# show an example of adversarial training
+## bolierplate imports as above
+from architectures.callbacks import AdvAttackWrapper
+
+## define device, model name, dataset name etc.
+
+m1 = arch.create_model(model, dataset, pretrained=pretrained, 
+                       checkpoint_path=checkpoint_path, seed=seed, 
+                       callback=partial(AdvAttackWrapper, dataset_name=dataset))
+
+## setup datamodule as above, seed everything etc.
+constraint, eps = '2', 1.
+checkpointer = NicerModelCheckpointing(dirpath=f'checkpoints/{dataset}/{model}/AT_l{constraint}_eps{eps:.2f}', 
+                               filename='{epoch}', 
+                               every_n_epochs=5, 
+                               save_top_k=5, 
+                               save_last=False,
+                               verbose=True,
+                               mode='min', 
+                               monitor='val_loss_adv')
+adv_callback = AdvCallback(constraint_train=constraint,
+                           eps_train=eps,
+                           step_size=1.,
+                           iterations_train=10,
+                           iterations_val=100,
+                           iterations_test=100,
+                           random_start_train=False,
+                           random_restarts_train=0,
+                           return_image=True)
+trainer = Trainer(accelerator='gpu', devices=devices,
+                  strategy=DDPPlugin(find_unused_parameters=False) if devices > 1 else None, 
+                  auto_select_gpus=True, deterministic=True,
+                  max_epochs=DATASET_PARAMS[dataset]['epochs'],
+                  check_val_every_n_epoch=5,
+                  num_sanity_val_steps=0,
+                  callbacks=[LitProgressBar(['running_acc_clean', 'running_acc_adv']),
+                             checkpointer,
+                             adv_callback])
+trainer.fit(m1, datamodule=dm)
 ```
 
 Example of self-supervised learning (SimCLR):

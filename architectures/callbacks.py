@@ -7,7 +7,8 @@ import torchmetrics
 from typing import Dict, Optional, Callable, Union
 from .utils import InputNormalize
 from datasets import dataset_metadata as ds
-
+from attack.attack_module import Attacker
+from architectures.utils import AverageMeter
 
 class LightningWrapper(LightningModule):
     """
@@ -33,6 +34,9 @@ class LightningWrapper(LightningModule):
         self.model = model
         self.accuracy_top1 = torchmetrics.Accuracy(top_k=1)
         self.accuracy_top5 = torchmetrics.Accuracy(top_k=5)
+        self.accuracy1_meter = AverageMeter('Acc@1')
+        self.accuracy5_meter = AverageMeter('Acc@5')
+        self.loss_meter = AverageMeter('Loss')
 
         assert dataset_name or (mean and std), \
             'Both dataset_name and (mean, std) cannot be None'
@@ -141,3 +145,116 @@ class LightningWrapper(LightningModule):
                                        step_size=self.step_lr, 
                                        gamma=self.step_lr_gamma)
         return {'optimizer': optimizer, 'lr_scheduler': schedule}
+
+
+class AdvAttackWrapper(LightningWrapper):
+    """
+    Useful for adversarial training and evaluation
+    NOTE: use pl.callbacks to set params for adv attack. 
+          Example given in attack.callbacks
+    """
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.attacker = Attacker(self.model, self.normalizer)
+        self.clean_accuracy1_meter = AverageMeter('clean_acc@1')
+        self.clean_accuracy5_meter = AverageMeter('clean_acc@5')
+        self.clean_loss_meter = AverageMeter('clean_loss')
+        self.adv_accuracy1_meter = AverageMeter('adv_acc@1')
+        self.adv_accuracy5_meter = AverageMeter('adv_acc@5')
+        self.adv_loss_meter = AverageMeter('adv_loss')
+
+    def forward(self, x, targ=None, adv=False, *args, **kwargs):
+        """
+        kwargs will be sent to attacker
+        args will be sent to the forward function of the model
+        """
+        if adv:
+            x, _ = self.attacker(x, targ, **kwargs)
+        return self.model(self.normalizer(x), *args)
+
+    def step(self, batch, batch_idx):
+        assert hasattr(self, 'attack_kwargs'), \
+            'Must pass a callback that initializes attack_kwargs'
+        x, y = batch
+        adv_pred = self.forward(x, y, adv=True, **self.attack_kwargs)
+        clean_pred = self.forward(x, y, adv=False)
+        return {'adv_pred': adv_pred, 'clean_pred': clean_pred, 'gt': y}
+
+    def step_end(self, step_outputs):
+        adv_pred, clean_pred, true = step_outputs['adv_pred'], \
+                                     step_outputs['clean_pred'], \
+                                     step_outputs['gt']                             
+
+        loss_clean = self.loss(clean_pred, true)
+        running_clean_acc1 = self.accuracy_top1(clean_pred, true)
+        running_clean_acc5 = self.accuracy_top5(clean_pred, true)
+        self.clean_accuracy1_meter.update(running_clean_acc1.item(), len(true))
+        self.clean_accuracy5_meter.update(running_clean_acc5.item(), len(true))
+        self.clean_loss_meter.update(loss_clean.item(), len(true))
+
+        loss_adv = self.loss(adv_pred, true)
+        running_adv_acc1 = self.accuracy_top1(adv_pred, true)
+        running_adv_acc5 = self.accuracy_top5(adv_pred, true)
+        self.adv_accuracy1_meter.update(running_adv_acc1.item(), len(true))
+        self.adv_accuracy5_meter.update(running_adv_acc5.item(), len(true))
+        self.adv_loss_meter.update(loss_adv.item(), len(true))
+
+        self.log('running_acc_clean', self.clean_accuracy1_meter.avg)
+        self.log('running_acc_adv', self.adv_accuracy1_meter.avg)
+        return {'loss': loss_adv}
+    
+    def epoch_end(self, outputs, split):
+        self.log(f'clean_{split}_acc1', self.clean_accuracy1_meter.avg)
+        self.clean_accuracy1_meter.reset()
+        self.log(f'adv_{split}_acc1', self.adv_accuracy1_meter.avg)
+        self.adv_accuracy1_meter.reset()
+        self.log(f'clean_{split}_acc5', self.clean_accuracy5_meter.avg)
+        self.clean_accuracy5_meter.reset()
+        self.log(f'adv_{split}_acc5', self.adv_accuracy5_meter.avg)
+        self.adv_accuracy5_meter.reset()
+        self.log(f'{split}_loss_adv', self.adv_loss_meter.avg)
+        self.adv_loss_meter.reset()
+        self.log(f'{split}_loss_clean', self.clean_loss_meter.avg)
+        self.clean_loss_meter.reset()
+
+    def training_step(self, batch, batch_idx):
+        ## use this for compatibility with ddp2 and dp
+        assert self.training
+        return self.step(batch, batch_idx)
+    
+    def training_step_end(self, training_step_outputs):
+        ## use this for compatibility with ddp2 and dp
+        assert self.training
+        return self.step_end(training_step_outputs)
+
+    def training_epoch_end(self, training_outputs):
+        assert self.training
+        return self.epoch_end(training_outputs, 'train')
+    
+    def validation_step(self, batch, batch_idx):
+        ## use this for compatibility with ddp2 and dp
+        assert not self.training
+        return self.step(batch, batch_idx)
+    
+    def validation_step_end(self, validation_step_outputs):
+        ## use this for compatibility with ddp2 and dp
+        assert not self.training
+        return self.step_end(validation_step_outputs)
+
+    def validation_epoch_end(self, validation_outputs):
+        assert not self.training
+        return self.epoch_end(validation_outputs, 'val')
+    
+    def test_step(self, batch, batch_idx):
+        ## use this for compatibility with ddp2 and dp
+        assert not self.training
+        return self.step(batch, batch_idx)
+
+    def test_step_end(self, test_step_outputs):
+        ## use this for compatibility with ddp2 and dp
+        assert not self.training
+        return self.step_end(test_step_outputs)
+
+    def test_epoch_end(self, test_outputs):
+        assert not self.training
+        return self.epoch_end(test_outputs, 'test')

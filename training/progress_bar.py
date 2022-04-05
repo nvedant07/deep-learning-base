@@ -3,7 +3,6 @@ from pytorch_lightning.callbacks import progress
 from pytorch_lightning.core.lightning import LightningModule
 from pytorch_lightning import utilities as pl_utils
 from pytorch_lightning.trainer.trainer import Trainer
-from copy import deepcopy
 
 
 class LitProgressBar(progress.TQDMProgressBar):
