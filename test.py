@@ -68,6 +68,6 @@ trainer = Trainer(accelerator='gpu', devices=devices,
                              checkpointer,
                              adv_callback])
 ## always use ddp -- works much faster, does not split batches
-trainer.fit(m1, datamodule=dm)
+trainer.validate(m1, datamodule=dm)
 acc = trainer.test(m1, datamodule=dm)
 print (f'Accuracy: {acc[0]["test_acc1"]}')

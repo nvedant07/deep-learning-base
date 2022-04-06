@@ -73,7 +73,7 @@ class CIFAR10DataModule(BaseDataModule):
 
     def setup(self, stage: Optional[str] = None):
         pl_utils.seed.seed_everything(self.random_split)
-        if stage in (None, 'fit'):
+        if stage in (None, 'fit', 'validate'):
             full_ds = self.dataset_class(root=self.data_dir, train=True, 
                 transform=self.transform_train, **self.dataset_kwargs)
             train_size = int((1-self.val_frac)*len(full_ds))
@@ -98,7 +98,7 @@ class CIFAR100DataModule(BaseDataModule):
 
     def setup(self, stage: Optional[str] = None):
         pl_utils.seed.seed_everything(self.random_split)
-        if stage in (None, 'fit'):
+        if stage in (None, 'fit', 'validate'):
             full_ds = self.dataset_class(root=self.data_dir, train=True, 
                 transform=self.transform_train, **self.dataset_kwargs)
             train_size = int((1-self.val_frac)*len(full_ds))
@@ -124,7 +124,7 @@ class STL10DataModule(BaseDataModule):
 
     def setup(self, stage: Optional[str] = None):
         pl_utils.seed.seed_everything(self.random_split)
-        if stage in (None, 'fit'):
+        if stage in (None, 'fit', 'validate'):
             self.train_ds = self.dataset_class(root=self.data_dir, 
                 split='train+unlabeled', transform=self.transform_train, 
                 **self.dataset_kwargs)
@@ -152,7 +152,7 @@ class ImageNetDataModule(BaseDataModule):
 
     def setup(self, stage: Optional[str] = None):
         pl_utils.seed.seed_everything(self.random_split)
-        if stage in (None, 'fit'):
+        if stage in (None, 'fit', 'validate'):
             full_ds = self.dataset_class(root=self.data_dir, split='train', 
                 transform=self.transform_train, **self.dataset_kwargs)
             train_size = int((1-self.val_frac)*len(full_ds))
