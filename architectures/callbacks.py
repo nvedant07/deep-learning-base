@@ -180,27 +180,30 @@ class AdvAttackWrapper(LightningWrapper):
         clean_pred = self.forward(x, y, adv=False)
         return {'adv_pred': adv_pred, 'clean_pred': clean_pred, 'gt': y}
 
-    def step_end(self, step_outputs):
+    def step_end(self, step_outputs, split):
         adv_pred, clean_pred, true = step_outputs['adv_pred'], \
                                      step_outputs['clean_pred'], \
                                      step_outputs['gt']                             
 
-        loss_clean = self.loss(clean_pred, true)
-        running_clean_acc1 = self.accuracy_top1(clean_pred, true)
-        running_clean_acc5 = self.accuracy_top5(clean_pred, true)
-        self.clean_accuracy1_meter.update(running_clean_acc1.item(), len(true))
-        self.clean_accuracy5_meter.update(running_clean_acc5.item(), len(true))
-        self.clean_loss_meter.update(loss_clean.item(), len(true))
+        loss_clean = self.loss(clean_pred, true).detach().item()
+        running_clean_acc1 = self.accuracy_top1(clean_pred, true).detach().item()
+        running_clean_acc5 = self.accuracy_top5(clean_pred, true).detach().item()
+        self.clean_accuracy1_meter.update(running_clean_acc1, len(true))
+        self.clean_accuracy5_meter.update(running_clean_acc5, len(true))
+        self.clean_loss_meter.update(loss_clean, len(true))
 
         loss_adv = self.loss(adv_pred, true)
-        running_adv_acc1 = self.accuracy_top1(adv_pred, true)
-        running_adv_acc5 = self.accuracy_top5(adv_pred, true)
-        self.adv_accuracy1_meter.update(running_adv_acc1.item(), len(true))
-        self.adv_accuracy5_meter.update(running_adv_acc5.item(), len(true))
+        if split != 'train':
+            loss_adv = loss_adv.detach()
+        running_adv_acc1 = self.accuracy_top1(adv_pred, true).detach().item()
+        running_adv_acc5 = self.accuracy_top5(adv_pred, true).detach().item()
+        self.adv_accuracy1_meter.update(running_adv_acc1, len(true))
+        self.adv_accuracy5_meter.update(running_adv_acc5, len(true))
         self.adv_loss_meter.update(loss_adv.item(), len(true))
 
         self.log('running_acc_clean', self.clean_accuracy1_meter.avg)
         self.log('running_acc_adv', self.adv_accuracy1_meter.avg)
+
         return {'loss': loss_adv}
     
     def epoch_end(self, outputs, split):
@@ -221,30 +224,30 @@ class AdvAttackWrapper(LightningWrapper):
         ## use this for compatibility with ddp2 and dp
         assert self.training
         return self.step(batch, batch_idx)
-    
+
     def training_step_end(self, training_step_outputs):
         ## use this for compatibility with ddp2 and dp
         assert self.training
-        return self.step_end(training_step_outputs)
+        return self.step_end(training_step_outputs, 'train')
 
     def training_epoch_end(self, training_outputs):
         assert self.training
         return self.epoch_end(training_outputs, 'train')
-    
+
     def validation_step(self, batch, batch_idx):
         ## use this for compatibility with ddp2 and dp
         assert not self.training
         return self.step(batch, batch_idx)
-    
+
     def validation_step_end(self, validation_step_outputs):
         ## use this for compatibility with ddp2 and dp
         assert not self.training
-        return self.step_end(validation_step_outputs)
+        return self.step_end(validation_step_outputs, 'val')
 
     def validation_epoch_end(self, validation_outputs):
         assert not self.training
         return self.epoch_end(validation_outputs, 'val')
-    
+
     def test_step(self, batch, batch_idx):
         ## use this for compatibility with ddp2 and dp
         assert not self.training
@@ -253,7 +256,7 @@ class AdvAttackWrapper(LightningWrapper):
     def test_step_end(self, test_step_outputs):
         ## use this for compatibility with ddp2 and dp
         assert not self.training
-        return self.step_end(test_step_outputs)
+        return self.step_end(test_step_outputs, 'test')
 
     def test_epoch_end(self, test_outputs):
         assert not self.training

@@ -1,7 +1,8 @@
-from typing import Union, Optional
+from typing import Union, Optional, Any
 from pytorch_lightning.callbacks import Callback
 from pytorch_lightning.trainer.trainer import Trainer
 from pytorch_lightning.core.lightning import LightningModule
+from pytorch_lightning.utilities.types import STEP_OUTPUT
 import torch as ch
 from torch.nn.modules.loss import _Loss
 from attack.attack_steps import AttackerStep
@@ -125,7 +126,7 @@ class AdvCallback(Callback):
             'model2': self.model2, 
             'targ2': self.targ2
         }
-        pl_module.__setattr__('attack_kwargs', attack_kwargs)
+        pl_module.__setattr__('attack_kwargs', attack_kwargs)        
     
     def on_test_epoch_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
         ch.set_grad_enabled(True)
