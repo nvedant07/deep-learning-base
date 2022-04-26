@@ -42,19 +42,32 @@ class BaseDataModule(pl.LightningDataModule):
         self.val_frac = val_frac
 
     def train_dataloader(self):
+        if not hasattr(self, 'train_ds'):
+            self.setup()
         return DataLoader(self.train_ds, batch_size=self.batch_size, 
             batch_sampler=self.batch_sampler, shuffle=self.shuffle_train, 
             num_workers=self.workers, pin_memory=self.pin_memory)
 
     def val_dataloader(self):
-        return DataLoader(self.val_ds, batch_size=self.batch_size, 
+        if not hasattr(self, 'val_ds'):
+            self.setup()
+        return DataLoader(self.val_ds if len(self.val_ds) > 0 else self.train_ds, 
+            batch_size=self.batch_size, 
             batch_sampler=self.batch_sampler, shuffle=self.shuffle_val, 
             num_workers=self.workers, pin_memory=self.pin_memory)
 
     def test_dataloader(self):
+        if not hasattr(self, 'test_ds'):
+            self.setup()
         return DataLoader(self.test_ds, batch_size=self.batch_size,             
             batch_sampler=self.batch_sampler, shuffle=self.shuffle_test, 
             num_workers=self.workers, pin_memory=self.pin_memory)
+    
+    def init_remaining_attrs(self, dname):
+        for k, v in DATASET_PARAMS[dname].items():
+            if not hasattr(self, k):
+                self.__setattr__(k, v)
+
 
 class CIFAR10DataModule(BaseDataModule):
     def __init__(self, dataset_class=datasets.CIFAR10, *args, **kwargs):
@@ -65,6 +78,8 @@ class CIFAR10DataModule(BaseDataModule):
             self.transform_train = DATASET_PARAMS['cifar10']['transform_train']
         if self.batch_size is None:
             self.batch_size = DATASET_PARAMS['cifar10']['batch_size']
+        
+        self.init_remaining_attrs('cifar10')
 
     def prepare_data(self):
         ## only needed when data needs to be downloaded
@@ -90,6 +105,8 @@ class CIFAR100DataModule(BaseDataModule):
             self.transform_train = DATASET_PARAMS['cifar100']['transform_train']
         if self.batch_size is None:
             self.batch_size = DATASET_PARAMS['cifar100']['batch_size']
+        
+        self.init_remaining_attrs('cifar100')
     
     def prepare_data(self):
         ## only needed when data needs to be downloaded
@@ -116,6 +133,8 @@ class STL10DataModule(BaseDataModule):
             self.transform_train = DATASET_PARAMS['stl10']['transform_train']
         if self.batch_size is None:
             self.batch_size = DATASET_PARAMS['stl10']['batch_size']
+        
+        self.init_remaining_attrs('stl10')
     
     def prepare_data(self):
         ## only needed when data needs to be downloaded
@@ -144,6 +163,8 @@ class ImageNetDataModule(BaseDataModule):
             self.transform_train = DATASET_PARAMS['imagenet']['transform_train']
         if self.batch_size is None:
             self.batch_size = DATASET_PARAMS['imagenet']['batch_size']
+        
+        self.init_remaining_attrs('imagenet')
     
     def prepare_data(self):
         # ImageNet needs to be pre-downloaded; this step will unzip the directory

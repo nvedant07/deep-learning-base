@@ -6,6 +6,8 @@ import torch
 import torch.nn as nn
 from torchvision import transforms
 
+from .gaussian_blur import GaussianBlur
+
 ## Default Data Augs taken from: 
 # https://github.com/MadryLab/robustness/blob/master/robustness/data_augmentation.py
 
@@ -125,6 +127,19 @@ Generic test data transform (no augmentation) to complement
 side length.
 """
 
+
+SIMCLR_TRAIN_TRANSFORMS = lambda size, s=1: transforms.Compose(
+    [
+        transforms.RandomResizedCrop(size=size),
+        transforms.RandomHorizontalFlip(),
+        transforms.RandomApply(
+            [transforms.ColorJitter(brightness=0.8*s, contrast=0.8*s, 
+                                    saturation=0.8*s, hue=0.2*s)], p=0.8),
+        transforms.RandomGrayscale(p=0.2),
+        transforms.ToTensor(),
+        GaussianBlur(size//2, 0.5)
+    ]
+) # same as original simclr implementation as well as https://github.com/AndrewAtanov/simclr-pytorch and https://github.com/sthalles/SimCLR
 
 
 DATASET_PARAMS = {

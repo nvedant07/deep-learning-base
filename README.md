@@ -232,11 +232,140 @@ trainer = Trainer(accelerator='gpu', devices=devices,
 trainer.fit(m1, datamodule=dm)
 ```
 
-Example of self-supervised learning (SimCLR):
+Example of self-supervised learning (SimCLR) -- training of backbone:
 
 ```python
-# show an example of SimCLR from vissl
+## bolierplate imports as above
+from ssl.simclr_callback import SimCLRWrapper
+
+dataset = 'cifar10'
+model = 'vgg16'
+checkpoint_path = ''
+pretrained = False
+seed = args.seed
+devices = 8
+num_nodes = 1
+batch_size = 1024 ## simclr benefits from large batch sizes
+max_epochs = 1000 ## simclr benefits from longer training
+# set find_unused_parameters = True since we 
+# ignore classification head in forward pass of SimCLRWrapper
+strategy = DDPPlugin(find_unused_parameters=True) if devices > 1 else None
+
+imagenet_path = '/NS/twitter_archive/work/vnanda/data'
+data_path = '/NS/twitter_archive2/work/vnanda/data'
+
+dm = DATA_MODULES[dataset](
+    data_dir=imagenet_path if dataset == 'imagenet' else data_path,
+    val_frac=0.,
+    batch_size=batch_size)
+# convert datamodule into a SimCLR datamodule -- this generates multiple views
+simclr_dm(dm, s=1, views=2)
+
+# hidden dim is needed for projection head
+hidden_dim = inference_with_features(
+    arch.create_model(model, dataset).eval(), 
+    torch.rand(
+        (1, 3, 
+        DATASET_PARAMS[dataset]['input_size'], 
+        DATASET_PARAMS[dataset]['input_size'])), with_latent=True).shape[-1]
+
+# send SimCLRWrapper to model
+m1 = arch.create_model(model, dataset, pretrained=pretrained,
+                       checkpoint_path=checkpoint_path, seed=seed,
+                       callback=partial(SimCLRWrapper,
+                                        max_epochs=max_epochs,
+                                        batch_size=dm.batch_size,
+                                        num_samples=len(dm.train_ds),
+                                        dataset_name=dataset,
+                                        optim='lars',
+                                        lr=DATASET_PARAMS[dataset]['lr'],
+                                        momentum=DATASET_PARAMS[dataset]['momentum'],
+                                        weight_decay=DATASET_PARAMS[dataset]['weight_decay'],
+                                        gpus=devices,
+                                        input_dim=hidden_dim,
+                                        hidden_dim=hidden_dim))
+
+pl_utils.seed.seed_everything(seed, workers=True)
+
+checkpointer = NicerModelCheckpointing(
+                               dirpath=f'checkpoints/{dataset}/{model}/simclr_bs_{dm.batch_size}', 
+                               filename='{epoch}_rand_seed' + f'_{seed}', 
+                               every_n_epochs=50, 
+                               save_last=False,
+                               verbose=True)
+trainer = Trainer(accelerator='gpu', devices=devices,
+                  num_nodes=num_nodes,
+                  strategy=strategy, 
+                  log_every_n_steps=1,
+                  auto_select_gpus=True, deterministic=True,
+                  max_epochs=max_epochs,
+                  check_val_every_n_epoch=1,
+                  num_sanity_val_steps=0,
+                  callbacks=[LitProgressBar(['loss']),
+                             checkpointer])
+# ## always use ddp -- works much faster, does not split batches
+trainer.fit(m1, datamodule=dm)
 ```
+
+Example of self-supervised learning (SimCLR) -- linear eval:
+
+```python
+## bolierplate imports as above
+from architectures.callbacks import LinearEvalWrapper
+
+dataset = 'cifar10'
+model = 'resnet50'
+
+pretrained = True
+seed = 1
+devices = 1 # no need for multi-device training
+num_nodes = 1
+batch_size = DATASET_PARAMS[dataset]['batch_size']
+max_epochs = DATASET_PARAMS[dataset]['epochs']
+
+imagenet_path = '/NS/twitter_archive/work/vnanda/data'
+data_path = '/NS/twitter_archive2/work/vnanda/data'
+
+dm = DATA_MODULES[dataset](
+    data_dir=imagenet_path if dataset == 'imagenet' else data_path,
+    val_frac=0.,
+    batch_size=batch_size)
+
+checkpoint_path = f'checkpoints/epoch=959_rand_seed_{seed}.ckpt'
+
+m1 = arch.create_model(model, dataset, pretrained=pretrained,
+                        checkpoint_path=checkpoint_path, seed=seed,
+                        callback=partial(LinearEvalWrapper,
+                                        DATASET_PARAMS[dataset]['epochs'],
+                                        dataset_name=dataset))
+
+pl_utils.seed.seed_everything(seed, workers=True)
+
+fname = checkpoint_path.split('.ckpt')[0]
+checkpointer = NicerModelCheckpointing(
+                            save_partial=[f'model.{x[0]}' for x in list(m1.model.named_parameters())[-2:]],
+                            dirpath='checkpoints', 
+                            filename=f'{fname}_linear_eval', 
+                            save_top_k=1,
+                            every_n_epochs=0,
+                            save_last=False,
+                            verbose=True,
+                            mode='max', # change to max if accuracy is being monitored
+                            monitor='val_acc1')
+trainer = Trainer(accelerator='gpu', devices=devices,
+                num_nodes=num_nodes,
+                log_every_n_steps=1,
+                auto_select_gpus=True, 
+                deterministic=True,
+                max_epochs=max_epochs,
+                check_val_every_n_epoch=1,
+                num_sanity_val_steps=0,
+                callbacks=[LitProgressBar(['loss', 'train_acc1']),
+                            checkpointer])
+trainer.fit(m1, datamodule=dm)
+
+```
+
 
 Example of self-supervised learning (BYOL):
 

@@ -4,7 +4,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.utilities import rank_zero_info
 from pytorch_lightning.utilities.types import _METRIC
 from weakref import proxy
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 from bisect import bisect
 import torch
 import shutil
@@ -12,7 +12,7 @@ import shutil
 
 class NicerModelCheckpointing(ModelCheckpoint):
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, save_partial = [], *args, **kwargs):
         """
         Changes from ModelCheckpoint:
          * every_n_epochs (done after training): this is a positive int 
@@ -31,6 +31,7 @@ class NicerModelCheckpointing(ModelCheckpoint):
          *  save_on_train_epoch_end has no meaning here
         """
         super(NicerModelCheckpointing, self).__init__(*args, **kwargs)
+        self.save_partial = save_partial
     
     def _should_skip_saving_checkpoint(self, trainer: Trainer) -> bool:
         from pytorch_lightning.trainer.states import TrainerFn
@@ -77,6 +78,14 @@ class NicerModelCheckpointing(ModelCheckpoint):
             return
         self.save_checkpoint(trainer, flag='topk')
     
+    def save_final_checkpoint(self, trainer: Trainer, filepath: str):
+        if len(self.save_partial) > 0:
+            sd = {k:v for k,v in \
+                trainer.training_type_plugin.model.state_dict().items() if k in self.save_partial}
+            torch.save({'state_dict': sd}, filepath)
+        else:
+            trainer.save_checkpoint(filepath, self.save_weights_only)
+
     def save_checkpoint(self, trainer: Trainer, flag: Optional[str] = 'topk') -> None:
         """Performs the main logic around saving a checkpoint.
         This method runs on all ranks. It is the responsibility of `trainer.save_checkpoint` to correctly handle the
@@ -120,7 +129,8 @@ class NicerModelCheckpointing(ModelCheckpoint):
         filepath = self._get_metric_interpolated_filepath_name(monitor_candidates, trainer)
         if 'epoch' not in filepath:
             filepath = self._update_filepath(filepath, f"epoch={trainer.current_epoch:d}")
-        trainer.save_checkpoint(filepath, self.save_weights_only)
+        
+        self.save_final_checkpoint(trainer, filepath)
         
         if self.verbose:
             rank_zero_info(f"Saved checkpoint for epoch: {trainer.current_epoch:d}")
@@ -134,14 +144,15 @@ class NicerModelCheckpointing(ModelCheckpoint):
         step = monitor_candidates.get("step")
 
         if self.check_monitor_top_k(trainer, current):
-            k = self._update_best_and_save(current, trainer, monitor_candidates)
+            k = self._update_best_and_save(current, trainer, monitor_candidates, self.save_partial)
             if self.verbose:
                 rank_zero_info(f"Epoch {epoch:d}, global step {step:d}: {self.monitor} saved with topk={k}")
         elif self.verbose:
             rank_zero_info(f"Epoch {epoch:d}, global step {step:d}: {self.monitor} was not in top {self.save_top_k}")
 
     def _update_best_and_save(self, current: torch.Tensor, 
-            trainer: Trainer, monitor_candidates: Dict[str, _METRIC]
+            trainer: Trainer, monitor_candidates: Dict[str, _METRIC],
+            save_partial: List[str]
         ) -> int:
 
         k = len(self.best_k_models) + 1 if self.save_top_k == -1 else self.save_top_k
@@ -205,7 +216,8 @@ class NicerModelCheckpointing(ModelCheckpoint):
                 f' (best {self.best_model_score:0.5f}), saving model to "{filepath}" as top {k}'
                 f" (inserted at {inserted_pos})"
             )
-        trainer.save_checkpoint(filepath, self.save_weights_only)
+        
+        self.save_final_checkpoint(trainer, filepath)
 
         if del_filepath is not None and filepath != del_filepath:
             trainer.training_type_plugin.remove_checkpoint(del_filepath)

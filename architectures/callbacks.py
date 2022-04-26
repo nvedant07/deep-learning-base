@@ -9,6 +9,7 @@ from .utils import InputNormalize
 from datasets import dataset_metadata as ds
 from attack.attack_module import Attacker
 from architectures.utils import AverageMeter
+from architectures.inference import inference_with_features
 
 class LightningWrapper(LightningModule):
     """
@@ -58,12 +59,14 @@ class LightningWrapper(LightningModule):
             if weight_decay is None else weight_decay
     
     def forward(self, x, *args, **kwargs):
-        return self.model(self.normalizer(x), *args, **kwargs)
+        return inference_with_features(self.model, 
+                                       self.normalizer(x), 
+                                       *args, **kwargs)
     
     def training_step(self, batch, batch_idx):
         ## use this for compatibility with ddp2 and dp
         x, y = batch
-        op = self.forward(x)
+        op = self(x)
         return {'pred': op, 'gt': y}
 
     def training_step_end(self, training_step_outputs):
@@ -89,7 +92,7 @@ class LightningWrapper(LightningModule):
 
     def validation_step(self, batch, batch_idx):
         x, y = batch
-        op = self.forward(x)
+        op = self(x)
         return {'pred': op, 'gt': y}
 
     def validation_step_end(self, validation_step_outputs):
@@ -117,7 +120,7 @@ class LightningWrapper(LightningModule):
 
     def test_step(self, batch, batch_idx):
         x, y = batch
-        op = self.forward(x)
+        op = self(x)
         return {'pred': op, 'gt': y}
     
     def test_step_end(self, test_step_outputs):
@@ -261,3 +264,32 @@ class AdvAttackWrapper(LightningWrapper):
     def test_epoch_end(self, test_outputs):
         assert not self.training
         return self.epoch_end(test_outputs, 'test')
+
+
+class LinearEvalWrapper(LightningWrapper):
+    """
+    Wraps a pytorch model (from timm or otherwise) in a PyTorch-Lightning like
+    model that can then be trained using a PyTorchLightning Trainer. 
+
+    Input Normalization is performed here, before input is fed to the model
+
+    This takes in a trained model, freezes all params apart from the final layer
+    """
+    def __init__(self, epochs, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.epochs = epochs
+
+    def configure_optimizers(self):
+        # disable requires_grad for all but last layer
+        parameters = list(self.parameters())
+        for p in parameters[:-2]:
+            p.requires_grad = False
+        
+        params = parameters[-2:]
+        optimizer = torch.optim.Adam(params, lr=self.lr, 
+                                     weight_decay=self.weight_decay)
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 
+                                                    step_size=int(self.epochs/3), 
+                                                    gamma=0.1)
+
+        return [optimizer], [scheduler]
