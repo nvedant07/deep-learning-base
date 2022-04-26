@@ -1,9 +1,6 @@
 [submodule "pytorch-image-models"]
 	path = pytorch-image-models
 	url = git@github.com:rwightman/pytorch-image-models.git
-[submodule "vissl"]
-	path = vissl
-	url = git@github.com:facebookresearch/vissl.git
 [submodule "adversarial_spatial"]
 	path = adversarial_spatial
 	url = git@github.com:MadryLab/adversarial_spatial.git
