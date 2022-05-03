@@ -1,4 +1,4 @@
-This is a directory for common DL code including models, adversarial attacks, supervised training. This is provides easy ways to extend models and training paradigms. This provides a smooth interface between many SOTA libraries like ``timm``, ``robustness``, ``vissl``. All the code relies on PyTorch and PyTorch-Lightning.
+This is a directory for common DL code including models, adversarial attacks, supervised training. This is provides easy ways to extend models and training paradigms. This provides a smooth interface between many SOTA libraries like ``timm`` and ``robustness``. All the code relies on PyTorch and PyTorch-Lightning.
 
 ## Models
 
@@ -135,9 +135,9 @@ Model dependent data augmentations:
 
 Supports different losses (eg: adversarial training), different optimizers (all included in ``timm``)
 
-Supervised: Uses [PyTorch-Lightning](https://github.com/facebookresearch/vissl) for easy, scalable training. 
+Supervised: Uses [PyTorch-Lightning](https://github.com/PyTorchLightning/pytorch-lightning) for easy, scalable training. 
 
-Self-supervised: Uses [vissl](https://github.com/facebookresearch/vissl) to track SOTA models and weights.
+Self-supervised: Provides implementations under ``self_supervised``.
 
 Uses [robustness](https://github.com/MadryLab/robustness) for attack module used in adversarial training.
 
@@ -370,7 +370,7 @@ trainer.fit(m1, datamodule=dm)
 Example of self-supervised learning (BYOL):
 
 ```python
-# show an example of BYOL from vissl
+# show an example of BYOL
 ```
 
 
