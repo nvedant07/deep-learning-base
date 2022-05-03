@@ -57,12 +57,12 @@ class LightningWrapper(LightningModule):
             if step_lr_gamma is None else step_lr_gamma
         self.weight_decay = ds.DATASET_PARAMS[dataset_name]['weight_decay'] \
             if weight_decay is None else weight_decay
-    
+
     def forward(self, x, *args, **kwargs):
         return inference_with_features(self.model, 
                                        self.normalizer(x), 
                                        *args, **kwargs)
-    
+
     def training_step(self, batch, batch_idx):
         ## use this for compatibility with ddp2 and dp
         x, y = batch
@@ -153,11 +153,12 @@ class LightningWrapper(LightningModule):
 class AdvAttackWrapper(LightningWrapper):
     """
     Useful for adversarial training and evaluation
-    NOTE: use pl.callbacks to set params for adv attack. 
+    NOTE: use pl.callbacks to dynamically set params for adv attack. 
           Example given in attack.callbacks
     """
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, model: nn.Module, return_adv_samples=False, *args, **kwargs):
+        super().__init__(model, *args, **kwargs)
+        self.return_adv_samples = return_adv_samples
         self.attacker = Attacker(self.model, self.normalizer)
         self.clean_accuracy1_meter = AverageMeter('clean_acc@1')
         self.clean_accuracy5_meter = AverageMeter('clean_acc@5')
@@ -166,22 +167,63 @@ class AdvAttackWrapper(LightningWrapper):
         self.adv_accuracy5_meter = AverageMeter('adv_acc@5')
         self.adv_loss_meter = AverageMeter('adv_loss')
 
-    def forward(self, x, targ=None, adv=False, *args, **kwargs):
+    def forward(self, x, targ=None, adv=False, return_adv=False, 
+                *args, **kwargs):
         """
         kwargs will be sent to attacker
         args will be sent to the forward function of the model
         """
         if adv:
             x, _ = self.attacker(x, targ, **kwargs)
+            if return_adv:
+                return (x, self.model(self.normalizer(x), *args))
         return self.model(self.normalizer(x), *args)
 
+    def predict_step(self, batch, batch_idx, dataloader_idx: Optional[int] = None):
+        x, y = batch
+        adv_x, pred_adv_x = self(x, y, adv=True, return_adv=self.return_adv_samples, 
+                                **self.attack_kwargs)
+        adv_x, pred_adv_x = adv_x.detach(), pred_adv_x.detach()
+
+        if torch.distributed.is_available() and torch.distributed.is_initialized():
+            all_x = self.all_gather(x)
+            all_x = torch.cat([all_x[i] for i in range(len(all_x))])
+            all_adv_x = self.all_gather(adv_x)
+            all_adv_x = torch.cat([all_adv_x[i] for i in range(len(all_adv_x))])
+            all_pred_adv_x = self.all_gather(pred_adv_x)
+            all_pred_adv_x = torch.cat([all_pred_adv_x[i] for i in range(len(all_pred_adv_x))])
+            
+            return all_x, (all_adv_x, all_pred_adv_x)
+
+        return x, (adv_x, pred_adv_x)
+    
+    def on_predict_epoch_end(self, results):
+        for i in range(len(results)):
+            cat_x, cat_xadv, cat_pred_xadv = None, None, None
+            for batch_res in results[i]:
+                x, (x_adv, pred_x_adv) = batch_res
+                cat_x = x if cat_x is None else torch.cat((cat_x, x))
+                cat_xadv = x_adv if cat_xadv is None else torch.cat((cat_xadv, x_adv))
+                cat_pred_xadv = pred_x_adv if cat_pred_xadv is None else \
+                    torch.cat((cat_pred_xadv, pred_x_adv))
+            results[i] = (cat_x, (cat_xadv, cat_pred_xadv))
+        return results
+
     def step(self, batch, batch_idx):
+        # done only during validate, test or train loops and cannot pass 
+        # multi-dim tensors -- so this will never return_adv_samples
+        # use trainer.predict() instead to get adversarial samples
         assert hasattr(self, 'attack_kwargs'), \
             'Must pass a callback that initializes attack_kwargs'
         x, y = batch
-        adv_pred = self.forward(x, y, adv=True, **self.attack_kwargs)
+        return_dict = {'gt': y}
+
+        adv_pred = self.forward(x, y, adv=True, return_adv=False, 
+                                **self.attack_kwargs)
         clean_pred = self.forward(x, y, adv=False)
-        return {'adv_pred': adv_pred, 'clean_pred': clean_pred, 'gt': y}
+        return_dict['adv_pred'] = adv_pred
+        return_dict['clean_pred'] = clean_pred
+        return return_dict
 
     def step_end(self, step_outputs, split):
         adv_pred, clean_pred, true = step_outputs['adv_pred'], \
@@ -206,7 +248,7 @@ class AdvAttackWrapper(LightningWrapper):
 
         self.log('running_acc_clean', self.clean_accuracy1_meter.avg)
         self.log('running_acc_adv', self.adv_accuracy1_meter.avg)
-
+        
         return {'loss': loss_adv}
     
     def epoch_end(self, outputs, split):
@@ -222,6 +264,7 @@ class AdvAttackWrapper(LightningWrapper):
         self.adv_loss_meter.reset()
         self.log(f'{split}_loss_clean', self.clean_loss_meter.avg)
         self.clean_loss_meter.reset()
+        return outputs
 
     def training_step(self, batch, batch_idx):
         ## use this for compatibility with ddp2 and dp

@@ -83,54 +83,8 @@ class AdvCallback(Callback):
         self.model2 = model2
         self.targ2 = targ2
     
-    def on_train_epoch_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
-        attack_kwargs = {
-            'constraint': self.constraint_train,
-            'eps': self.eps_train, 
-            'step_size': self.step_size, 
-            'iterations': self.iterations_train,
-            'random_start': self.random_start_train, 
-            'random_restarts': self.random_restarts_train, 
-            'do_tqdm': self.do_tqdm,
-            'targeted': self.targeted, 
-            'custom_loss': self.custom_loss, 
-            'should_normalize': self.should_normalize,
-            'orig_input': self.orig_input, 
-            'use_best': self.use_best, 
-            'return_image': self.return_image, 
-            'est_grad': self.est_grad, 
-            'mixed_precision': self.mixed_precision, 
-            'model2': self.model2, 
-            'targ2': self.targ2
-        }
-        pl_module.__setattr__('attack_kwargs', attack_kwargs)
-    
-    def on_validation_epoch_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
-        ch.set_grad_enabled(True) # need gradients for constructing adv samples
-        attack_kwargs = {
-            'constraint': self.constraint_val,
-            'eps': self.eps_val, 
-            'step_size': self.step_size, 
-            'iterations': self.iterations_val,
-            'random_start': self.random_start_val, 
-            'random_restarts': self.random_restarts_val, 
-            'do_tqdm': self.do_tqdm,
-            'targeted': self.targeted, 
-            'custom_loss': self.custom_loss, 
-            'should_normalize': self.should_normalize,
-            'orig_input': self.orig_input, 
-            'use_best': self.use_best, 
-            'return_image': self.return_image, 
-            'est_grad': self.est_grad, 
-            'mixed_precision': self.mixed_precision, 
-            'model2': self.model2, 
-            'targ2': self.targ2
-        }
-        pl_module.__setattr__('attack_kwargs', attack_kwargs)        
-    
-    def on_test_epoch_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
-        ch.set_grad_enabled(True)
-        attack_kwargs = {
+    def get_eval_kwargs(self):
+        return {
             'constraint': self.constraint_test,
             'eps': self.eps_test, 
             'step_size': self.step_size, 
@@ -149,4 +103,64 @@ class AdvCallback(Callback):
             'model2': self.model2, 
             'targ2': self.targ2
         }
+
+    def get_train_kwargs(self):
+        return {
+            'constraint': self.constraint_train,
+            'eps': self.eps_train, 
+            'step_size': self.step_size, 
+            'iterations': self.iterations_train,
+            'random_start': self.random_start_train, 
+            'random_restarts': self.random_restarts_train, 
+            'do_tqdm': self.do_tqdm,
+            'targeted': self.targeted, 
+            'custom_loss': self.custom_loss, 
+            'should_normalize': self.should_normalize,
+            'orig_input': self.orig_input, 
+            'use_best': self.use_best, 
+            'return_image': self.return_image, 
+            'est_grad': self.est_grad, 
+            'mixed_precision': self.mixed_precision, 
+            'model2': self.model2, 
+            'targ2': self.targ2
+        }
+    
+    def get_val_kwargs(self):
+        return {
+            'constraint': self.constraint_val,
+            'eps': self.eps_val, 
+            'step_size': self.step_size, 
+            'iterations': self.iterations_val,
+            'random_start': self.random_start_val, 
+            'random_restarts': self.random_restarts_val, 
+            'do_tqdm': self.do_tqdm,
+            'targeted': self.targeted, 
+            'custom_loss': self.custom_loss, 
+            'should_normalize': self.should_normalize,
+            'orig_input': self.orig_input, 
+            'use_best': self.use_best, 
+            'return_image': self.return_image, 
+            'est_grad': self.est_grad, 
+            'mixed_precision': self.mixed_precision, 
+            'model2': self.model2, 
+            'targ2': self.targ2
+        }
+
+    def on_train_epoch_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
+        attack_kwargs = self.get_train_kwargs()
         pl_module.__setattr__('attack_kwargs', attack_kwargs)
+    
+    def on_validation_epoch_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
+        ch.set_grad_enabled(True) # need gradients for constructing adv samples
+        attack_kwargs = self.get_val_kwargs()
+        pl_module.__setattr__('attack_kwargs', attack_kwargs)        
+    
+    def on_test_epoch_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
+        ch.set_grad_enabled(True)
+        attack_kwargs = self.get_eval_kwargs()
+        pl_module.__setattr__('attack_kwargs', attack_kwargs)
+    
+    def on_predict_epoch_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
+        self.on_test_epoch_start(trainer, pl_module)
+    
+    

@@ -98,16 +98,16 @@ class SimCLRWrapper(LightningModule):
                  mean: Optional[torch.Tensor] = None, 
                  std: Optional[torch.Tensor] = None, 
                  optim: str = 'lars',
-                 temperature: float = 0.07, 
+                 temperature: float = 0.5, 
                  views: int = 2,
-                 lr: Optional[float] = None, 
+                 lr: Optional[float] = 4.0, 
                  warmup_epochs: int = 10,
                  input_dim: int = 2048,
                  hidden_dim: int = 2048,
                  feat_dim: int = 128,
                  num_nodes: int = 1,
                  gpus: int = 1,
-                 weight_decay: Optional[float] = None, 
+                 weight_decay: Optional[float] = 1.0e-06, 
                  step_lr: Optional[float] = None, 
                  step_lr_gamma: Optional[float] = None, 
                  momentum: Optional[float] = None, 
@@ -192,42 +192,49 @@ class SimCLRWrapper(LightningModule):
         self.log("train_loss", self.loss_meter.avg)
         self.loss_meter.reset()
 
-    def exclude_from_wt_decay(self, named_params, weight_decay, skip_list=("bias", "bn")):
+    def exclude_from_wt_decay(self):
         params = []
         excluded_params = []
 
-        for name, param in named_params:
+        for name, param in self.named_parameters():
             if not param.requires_grad:
                 continue
-            elif any(layer_name in name for layer_name in skip_list):
-                excluded_params.append(param)
+            elif not self.hparams.exclude_bn_bias:
+                params.append(param)
             else:
+                if 'bn' in name:
+                    excluded_params.append(param)
+                    continue
+                if self.hparams.optim == 'lars' and 'bias' in name:
+                    excluded_params.append(param)
+                    continue
                 params.append(param)
 
         return [
-            {"params": params, "weight_decay": weight_decay},
+            {
+                "params": params, 
+                "weight_decay": self.hparams.weight_decay,
+                "layer_adaptation": True
+            },
             {
                 "params": excluded_params,
                 "weight_decay": 0.0,
+                "layer_adaptation": False
             },
         ]
 
     def configure_optimizers(self):
-        if self.hparams.exclude_bn_bias:
-            params = self.exclude_from_wt_decay(self.named_parameters(), weight_decay=self.hparams.weight_decay)
-        else:
-            params = self.parameters()
+        params = self.exclude_from_wt_decay()
 
         if self.hparams.optim == "lars":
             optimizer = LARS(
                 params,
                 lr=self.hparams.lr,
                 momentum=self.hparams.momentum,
-                weight_decay=self.hparams.weight_decay,
                 trust_coefficient=0.001,
             )
         elif self.hparams.optim == "adam":
-            optimizer = torch.optim.Adam(params, lr=self.hparams.lr, weight_decay=self.hparams.weight_decay)
+            optimizer = torch.optim.Adam(params, lr=self.hparams.lr)
         else:
             raise ValueError(f'{self.hparams.optim} not supported')
 

@@ -1,10 +1,11 @@
 import torch
 from torchvision import datasets, transforms
-from torch.utils.data import random_split, DataLoader, Dataset, Sampler
+from torch.utils.data import random_split, DataLoader, Dataset, Sampler, Subset
 import pytorch_lightning as pl
 from pytorch_lightning import utilities as pl_utils
 from typing import Iterable, Optional, Sequence, Union, Callable
 from .dataset_metadata import DATASET_PARAMS
+import numpy as np
 
 
 class BaseDataModule(pl.LightningDataModule):
@@ -17,6 +18,8 @@ class BaseDataModule(pl.LightningDataModule):
                  pin_memory: bool = True, 
                  workers: int = 30,
                  random_split: int = 0, 
+                 subset: Optional[float] = None,
+                 subset_type: str = 'rand',
                  batch_size: Optional[int] = None, 
                  batch_sampler: Optional[Union[Sampler[Sequence], Iterable[Sequence]]] = None, 
                  transform_train: Optional[Callable] = None, 
@@ -40,6 +43,8 @@ class BaseDataModule(pl.LightningDataModule):
         self.transform_test = transform_test
         self.random_split = random_split
         self.val_frac = val_frac
+        self.subset = subset
+        self.subset_type = subset_type
 
     def train_dataloader(self):
         if not hasattr(self, 'train_ds'):
@@ -63,6 +68,17 @@ class BaseDataModule(pl.LightningDataModule):
             batch_sampler=self.batch_sampler, shuffle=self.shuffle_test, 
             num_workers=self.workers, pin_memory=self.pin_memory)
     
+    def subset_train_ds(self):
+        train_sample_count = len(self.train_ds)
+        if self.subset_type == 'rand':
+            subset = np.random.choice(list(range(train_sample_count)), 
+                size=self.subset, replace=False)
+        elif self.subset_type == 'first':
+            subset = np.arange(0, subset)
+        else:
+            subset = np.arange(train_sample_count - subset, train_sample_count)
+        self.train_ds = Subset(self.train_ds, subset)
+
     def init_remaining_attrs(self, dname):
         for k, v in DATASET_PARAMS[dname].items():
             if not hasattr(self, k):
@@ -93,6 +109,8 @@ class CIFAR10DataModule(BaseDataModule):
                 transform=self.transform_train, **self.dataset_kwargs)
             train_size = int((1-self.val_frac)*len(full_ds))
             self.train_ds, self.val_ds = random_split(full_ds, [train_size, len(full_ds) - train_size])
+            if self.subset:
+                self.subset_train_ds()
         if stage in (None, 'test'):
             self.test_ds = self.dataset_class(root=self.data_dir, train=False, transform=self.transform_test, **self.dataset_kwargs)
 
@@ -121,6 +139,8 @@ class CIFAR100DataModule(BaseDataModule):
             train_size = int((1-self.val_frac)*len(full_ds))
             self.train_ds, self.val_ds = random_split(full_ds, [train_size, len(full_ds) - train_size])
             self.val_ds.__setattr__('transform', self.transform_test)
+            if self.subset:
+                self.subset_train_ds()
         if stage in (None, 'test'):
             self.test_ds = self.dataset_class(root=self.data_dir, train=False, transform=self.transform_test, **self.dataset_kwargs)
 
@@ -149,6 +169,8 @@ class STL10DataModule(BaseDataModule):
                 **self.dataset_kwargs)
             self.val_ds = self.dataset_class(root=self.data_dir, split='train', 
                 transform=self.transform_test, **self.dataset_kwargs)
+            if self.subset:
+                self.subset_train_ds()
         if stage in (None, 'test'):
             self.test_ds = self.dataset_class(root=self.data_dir, split='test',
                 transform=self.transform_test, **self.dataset_kwargs)
@@ -179,6 +201,8 @@ class ImageNetDataModule(BaseDataModule):
             train_size = int((1-self.val_frac)*len(full_ds))
             self.train_ds, self.val_ds = random_split(full_ds, [train_size, len(full_ds) - train_size])
             self.val_ds.__setattr__('transform', self.transform_test)
+            if self.subset:
+                self.subset_train_ds()
         if stage in (None, 'test'):
             self.test_ds = self.dataset_class(root=self.data_dir, split='val', 
                 transform=self.transform_test, **self.dataset_kwargs)

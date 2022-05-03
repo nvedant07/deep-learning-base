@@ -378,10 +378,54 @@ Example of self-supervised learning (BYOL):
 
 Attack module in [robustness](https://github.com/MadryLab/robustness). Also includes spatial attacks, taken from [adversarial_spatial](https://github.com/MadryLab/adversarial_spatial).
 
-To do adversarial attack on models, wrap them in the ``Attack`` module. Here's an example:
+To do adversarial attack on models, use the ``AdvAttackWrapper`` and simply perform inference on it.
 
 ```python
-# Show how to do L_inf PGD attack on an ImageNet ResNet
+## boilerplate code as above
+
+dm = DATA_MODULES[dataset](
+    data_dir=imagenet_path if dataset == 'imagenet' else data_path,
+    val_frac=0.,
+    subset=100,
+    batch_size=32)
+# val fraction = 0. makes val_ds = train_ds -- 
+# use it to do inference on the training set
+
+m1 = arch.create_model(model, dataset, pretrained=pretrained,
+                       checkpoint_path=checkpoint_path, seed=seed, 
+                       callback=partial(AdvAttackWrapper, 
+                                        return_adv_samples=True,
+                                        dataset_name=dataset))
+
+adv_callback = AdvCallback(constraint_train='2',
+                           eps_train=1.,
+                           step_size=1.,
+                           iterations_train=1,
+                           iterations_val=10,
+                           iterations_test=10,
+                           random_start_train=False,
+                           random_restarts_train=0,
+                           return_image=True)
+
+trainer = Trainer(accelerator='gpu', devices=devices,
+                  num_nodes=num_nodes,
+                  strategy=strategy, 
+                  log_every_n_steps=1,
+                  auto_select_gpus=True, deterministic=True,
+                  max_epochs=1,
+                  check_val_every_n_epoch=1,
+                  num_sanity_val_steps=0,
+                  callbacks=[LitProgressBar(['loss', 'running_acc_clean', 'running_acc_adv']), 
+                             adv_callback])
+## trainer allows distributed inference
+## DDP will spawn multiple processes
+out = trainer.predict(m1, dataloaders=[dm.val_dataloader()]) 
+# val_dataloader has the entire training set
+
+if trainer.is_global_zero:
+    ## do things on the main process
+    for dl_wise_results in out: # out has results for each dataloader
+        x, (x_adv, pred_x_adv) = dl_wise_results
 ```
 
 
