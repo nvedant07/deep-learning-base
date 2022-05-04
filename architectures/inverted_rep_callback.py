@@ -5,8 +5,8 @@ from .inference import inference_with_features
 
 class InvertedRepWrapper(AdvAttackWrapper):
 
-    def __init__(self, seed: torch.Tensor, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+    def __init__(self, model: torch.nn.Module, seed: torch.Tensor, *args, **kwargs) -> None:
+        super().__init__(model, *args, **kwargs)
         self.seed = seed # shape: (channels, width, height)
     
     def forward(self, x, *args, **kwargs):
