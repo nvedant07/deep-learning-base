@@ -176,8 +176,8 @@ class AdvAttackWrapper(LightningWrapper):
         if adv:
             x, _ = self.attacker(x, targ, **kwargs)
             if return_adv:
-                return (x, self.model(self.normalizer(x), *args))
-        return self.model(self.normalizer(x), *args)
+                return (x, inference_with_features(self.model, self.normalizer(x), *args))
+        return inference_with_features(self.model, self.normalizer(x), *args)
 
     def predict_step(self, batch, batch_idx, dataloader_idx: Optional[int] = None):
         x, y = batch

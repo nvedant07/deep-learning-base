@@ -79,6 +79,8 @@ trainer = Trainer(accelerator='gpu', devices=devices,
 acc = trainer.test(m1, datamodule=dm)
 ```
 
+If you need predictions, implement the logic in `on_predict_step` hook of `LightningModule`. An example is provided in `AdvAttackWrapper`. See 
+
 
 To get intermediate layer representations:
 
@@ -363,9 +365,7 @@ trainer = Trainer(accelerator='gpu', devices=devices,
                 callbacks=[LitProgressBar(['loss', 'train_acc1']),
                             checkpointer])
 trainer.fit(m1, datamodule=dm)
-
 ```
-
 
 Example of self-supervised learning (BYOL):
 

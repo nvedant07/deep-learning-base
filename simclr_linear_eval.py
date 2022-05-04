@@ -51,7 +51,7 @@ dm = DATA_MODULES[dataset](
     batch_size=batch_size)
 
 
-dirpath = f'/NS/robustness_2/work/vnanda/deep_learning_base/checkpoints/{dataset}/{model}/simclr_bs_1024/lars_excludebn_True'
+dirpath = f'/NS/robustness_2/work/vnanda/deep_learning_base/checkpoints/{dataset}/{model}/simclr_bs_1024/adam_excludebn_True'
 model_checkpoints = glob.glob(f'{dirpath}/*_rand_seed_{args.seed}.ckpt')
 
 for checkpoint_path in model_checkpoints:
