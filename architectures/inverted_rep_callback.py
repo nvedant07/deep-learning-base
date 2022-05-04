@@ -23,7 +23,6 @@ class InvertedRepWrapper(AdvAttackWrapper):
             all_inverted_reps = torch.cat([all_inverted_reps[i] for i in \
                 range(len(all_inverted_reps))])
             return all_inverted_reps
-
         return inverted_rep
     
     def on_predict_epoch_end(self, results):

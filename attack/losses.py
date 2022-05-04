@@ -27,7 +27,7 @@ def forward_models(model, inp):
 class LPNormLossSingleModel(BaseLoss):
 
     def __init__(self, *args, **kwargs):
-        super().__init__(*args)
+        super().__init__(*args, **kwargs)
 
     def __call__(self, model1, model2, inp, targ1, targ2):
         _, rep1 = forward_models(model1, inp)
@@ -70,7 +70,7 @@ class LpNormLossSingleModelPerceptual(BaseLoss):
             For models of the form *_madry_*, there must be a path, if None is specified, 
             then the default ones are used (defined in `ROBUST_MODEL_WEIGHTS`)
         """
-        super().__init__(*args)
+        super().__init__(*args, **kwargs)
         if kwargs['lpips_model'] in ROBUST_MODEL_WEIGHTS and kwargs['lpips_model_path'] is None:
             model_path = ROBUST_MODEL_WEIGHTS[kwargs['lpips_model']]
         else:
