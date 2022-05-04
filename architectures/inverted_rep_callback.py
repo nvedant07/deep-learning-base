@@ -11,7 +11,7 @@ class InvertedRepWrapper(AdvAttackWrapper):
     
     def forward(self, x, *args, **kwargs):
         target_rep = inference_with_features(self.model, self.normalizer(x), *args)[1].detach()
-        seeds = torch.cat((self.seed.clone(),) * len(x)).to(x.device)
+        seeds = torch.stack((self.seed.clone(),) * len(x)).to(x.device)
         x, _ = self.attacker(seeds, target_rep, **kwargs)
         return x
 
