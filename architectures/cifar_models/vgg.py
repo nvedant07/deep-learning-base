@@ -3,6 +3,7 @@ from .registry import register_model_name
 import torch
 import torch.nn as nn
 from typing import Iterator
+import warnings
 
 cfg = {
     'VGG11': [64, 'M', 128, 'M', 256, 256, 'M', 512, 512, 'M', 512, 512, 'M'],
@@ -30,8 +31,9 @@ class VGG(nn.Module):
         return range(1, len(self.features) + self.num_fc_layers + 1)
 
     def forward(self, x, with_latent=False, fake_relu=False, no_relu=False, layer_num=None):
-        assert (not fake_relu) and (not no_relu),  \
-            "fake_relu and no_relu not yet supported for this architecture"
+        if (not fake_relu) and (not no_relu):
+            warnings.warn("`fake_relu` and `no_relu` not yet supported for this architecture; "
+                          "there will be no effect on the forward function")
         if layer_num is not None:
             ft_1, ft_2 = [], []
             for idx, l in enumerate(self.features):

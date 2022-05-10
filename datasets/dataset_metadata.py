@@ -104,6 +104,7 @@ Resized to 256x256 then center cropped to 224x224.
 
 # Data Augmentation: supervised learning defaults
 TRAIN_TRANSFORMS_DEFAULT = lambda size: transforms.Compose([
+            transforms.Resize(size),
             transforms.RandomCrop(size, padding=4),
             transforms.RandomHorizontalFlip(),
             transforms.ColorJitter(.25,.25,.25),

@@ -158,8 +158,8 @@ class STL10DataModule(BaseDataModule):
     
     def prepare_data(self):
         ## only needed when data needs to be downloaded
-        self.dataset_class(self.data_dir, train=True, download=True)
-        self.dataset_class(self.data_dir, train=False, download=True)
+        self.dataset_class(self.data_dir, split='train+unlabeled', download=True)
+        self.dataset_class(self.data_dir, split='test', download=True)
 
     def setup(self, stage: Optional[str] = None):
         pl_utils.seed.seed_everything(self.random_split)

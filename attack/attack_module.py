@@ -125,11 +125,11 @@ class Attacker(ch.nn.Module):
             """
             if should_normalize:
                 inp = self.normalize(inp)
-            output = self.model(inp)
             
             if custom_loss:
-                return custom_loss(self.model, model2, inp, target, targ2), output
+                return custom_loss(self.model, model2, inp, target, targ2), None
             else:
+                output = self.model(inp)
                 return criterion(output, target), output
 
         # Main function for making adversarial examples

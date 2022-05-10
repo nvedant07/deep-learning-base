@@ -5,6 +5,7 @@ from pytorch_lightning.plugins import DDPPlugin
 from torchvision.transforms import transforms
 from training import NicerModelCheckpointing, LitProgressBar
 import torch
+import torch.nn as nn
 import architectures as arch
 from attack.callbacks import AdvCallback
 from architectures.callbacks import LightningWrapper, AdvAttackWrapper, LinearEvalWrapper
@@ -18,7 +19,8 @@ import glob, os
 import argparse
 
 parser = argparse.ArgumentParser(description='PyTorch Visual Explanation')
-parser.add_argument('--dataset', type=str, default='cifar10')
+parser.add_argument('--source_dataset', type=str, default='cifar10')
+parser.add_argument('--target_dataset', type=str, default='cifar10')
 parser.add_argument('--model', type=str, default='resnet18')
 parser.add_argument('--seed', type=int, default=1)
 parser.add_argument('--batch_size', type=int, default=None)
@@ -27,7 +29,8 @@ args = parser.parse_args()
 
 
 
-dataset = args.dataset
+source_dataset = args.source_dataset
+target_dataset = args.target_dataset
 # dataset = 'imagenet'
 
 model = args.model
@@ -38,31 +41,39 @@ seed = args.seed
 devices = 1
 num_nodes = 1
 batch_size = args.batch_size if args.batch_size else \
-    DATASET_PARAMS[dataset]['batch_size']
+    DATASET_PARAMS[target_dataset]['batch_size']
 max_epochs = args.max_epochs if args.max_epochs else \
-    DATASET_PARAMS[dataset]['epochs']
+    DATASET_PARAMS[target_dataset]['epochs']
 
 imagenet_path = '/NS/twitter_archive/work/vnanda/data'
 data_path = '/NS/twitter_archive2/work/vnanda/data'
 
-dm = DATA_MODULES[dataset](
-    data_dir=imagenet_path if dataset == 'imagenet' else data_path,
+dm = DATA_MODULES[target_dataset](
+    data_dir=imagenet_path if target_dataset == 'imagenet' else data_path,
     val_frac=0.,
-    batch_size=batch_size)
+    batch_size=batch_size,
+    transform_train=DATASET_PARAMS[source_dataset]['transform_train'],
+    transform_test=DATASET_PARAMS[source_dataset]['transform_test'])
 
 
-dirpath = f'/NS/robustness_2/work/vnanda/deep_learning_base/checkpoints/{dataset}/{model}/simclr_bs_1024/adam_excludebn_True'
+dirpath = f'/NS/robustness_2/work/vnanda/deep_learning_base/checkpoints/{source_dataset}/{model}/simclr_bs_512/lars_excludebn_True'
 model_checkpoints = glob.glob(f'{dirpath}/*_rand_seed_{args.seed}.ckpt')
 
 for checkpoint_path in model_checkpoints:
-    if os.path.exists(f'{checkpoint_path.split(".ckpt")[0]}_linear_eval-topk=1.ckpt'):
+    if os.path.exists(f'{checkpoint_path.split(".ckpt")[0]}_{target_dataset}_rescaled_linear_eval-topk=1.ckpt'):
         continue
     # Use the lineareval SimCLR wrapper to model -- use standard data transforms
-    m1 = arch.create_model(model, dataset, pretrained=pretrained,
+    m1 = arch.create_model(model, source_dataset, pretrained=pretrained,
                         checkpoint_path=checkpoint_path, seed=seed,
                         callback=partial(LinearEvalWrapper,
-                                        DATASET_PARAMS[dataset]['epochs'],
-                                        dataset_name=dataset))
+                                        max_epochs,
+                                        mean=DATASET_PARAMS[source_dataset]['mean'],
+                                        std=DATASET_PARAMS[source_dataset]['std'],
+                                        dataset_name=target_dataset))
+    name, module = list(m1.model.named_modules())[-1]
+    m1.model.__setattr__(name,
+                         nn.Linear(module.in_features, 
+                                   DATASET_PARAMS[target_dataset]['num_classes']))
 
     pl_utils.seed.seed_everything(seed, workers=True)
 
@@ -70,7 +81,7 @@ for checkpoint_path in model_checkpoints:
     checkpointer = NicerModelCheckpointing(
                                 save_partial=[f'model.{x[0]}' for x in list(m1.model.named_parameters())[-2:]],
                                 dirpath=dirpath, 
-                                filename=f'{fname}_linear_eval', 
+                                filename=f'{fname}_{target_dataset}_rescaled_linear_eval', 
                                 save_top_k=1,
                                 every_n_epochs=0,
                                 save_last=False,

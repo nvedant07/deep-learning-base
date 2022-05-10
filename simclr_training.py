@@ -7,6 +7,7 @@ from training import NicerModelCheckpointing, LitProgressBar
 import torch
 import architectures as arch
 from attack.callbacks import AdvCallback
+from attack.losses import LPNormLossSingleModel
 from architectures.callbacks import LightningWrapper, AdvAttackWrapper
 from architectures.inference import inference_with_features
 from datasets.data_modules import DATA_MODULES
@@ -23,10 +24,9 @@ parser.add_argument('--seed', type=int, default=420)
 parser.add_argument('--batch_size', type=int, default=None)
 parser.add_argument('--max_epochs', type=int, default=None)
 parser.add_argument('--optim', type=str, default='lars')
+parser.add_argument('--adv_aug', type=bool, default=False)
 parser.add_argument('--exclude_bn_bias', type=int, choices=[0,1], default=0)
 args = parser.parse_args()
-
-
 
 
 dataset = args.dataset
@@ -52,7 +52,7 @@ max_epochs = args.max_epochs if args.max_epochs else DATASET_PARAMS[dataset]['ep
 strategy = DDPPlugin(find_unused_parameters=True) if devices > 1 else None
 
 imagenet_path = '/NS/twitter_archive/work/vnanda/data'
-data_path = '/NS/twitter_archive2/work/vnanda/data'
+data_path = '/NS/twitter_archive/work/vnanda/data'
 
 dm = DATA_MODULES[dataset](
     data_dir=imagenet_path if dataset == 'imagenet' else data_path,
@@ -77,9 +77,8 @@ m1 = arch.create_model(model, dataset, pretrained=pretrained,
                                         batch_size=dm.batch_size,
                                         num_samples=len(dm.train_ds),
                                         dataset_name=dataset,
-                                        # lr=DATASET_PARAMS[dataset]['lr'],
                                         momentum=DATASET_PARAMS[dataset]['momentum'],
-                                        # weight_decay=DATASET_PARAMS[dataset]['weight_decay'],
+                                        adv_aug=args.adv_aug,
                                         gpus=devices,
                                         input_dim=hidden_dim,
                                         hidden_dim=hidden_dim,
@@ -90,7 +89,8 @@ pl_utils.seed.seed_everything(seed, workers=True)
 
 checkpointer = NicerModelCheckpointing(
     dirpath=f'/NS/robustness_2/work/vnanda/deep_learning_base/checkpoints/{dataset}/'
-            f'{model}/simclr_bs_{dm.batch_size}/{args.optim}_excludebn_{bool(args.exclude_bn_bias)}', 
+            f'{model}/simclr_bs_{dm.batch_size}_adv_{args.adv_aug}/'
+            f'{args.optim}_excludebn_{bool(args.exclude_bn_bias)}', 
     filename='{epoch}_rand_seed' + f'_{seed}', 
     every_n_epochs=50, 
     save_top_k=5, 
@@ -98,15 +98,18 @@ checkpointer = NicerModelCheckpointing(
     verbose=True,
     mode='min', # change to max if accuracy is being monitored
     monitor='train_loss')
-# adv_callback = AdvCallback(constraint_train='2',
-#                            eps_train=1.,
-#                            step_size=1.,
-#                            iterations_train=1,
-#                            iterations_val=10,
-#                            iterations_test=10,
-#                            random_start_train=False,
-#                            random_restarts_train=0,
-#                            return_image=True)
+
+adv_callback = AdvCallback(constraint_train='2',
+                           eps_train=1.,
+                           step_size=.5,
+                           iterations_train=5,
+                           iterations_val=10,
+                           iterations_test=10,
+                           random_start_train=False,
+                           random_restarts_train=0,
+                           return_image=True,
+                           do_tqdm=True,
+                           custom_loss=LPNormLossSingleModel(lpnorm_type=2))
 trainer = Trainer(accelerator='gpu', devices=devices,
                   num_nodes=num_nodes,
                   strategy=strategy, 
@@ -116,6 +119,7 @@ trainer = Trainer(accelerator='gpu', devices=devices,
                   check_val_every_n_epoch=1,
                   num_sanity_val_steps=0,
                   callbacks=[LitProgressBar(['loss']),
+                             adv_callback,
                              checkpointer])
 # ## always use ddp -- works much faster, does not split batches
 trainer.fit(m1, datamodule=dm)

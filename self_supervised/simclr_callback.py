@@ -78,6 +78,25 @@ class Projection(nn.Module):
         return F.normalize(x, dim=1)
 
 
+class CompositeModule(nn.Module):
+    """
+    Combines model and projection in a single module
+    can be passed to inference.inference_with_features
+    Output is a tuple of (output, rep)
+    output can be ignored but it's kept for compatibility
+    """
+
+    def __init__(self, model: nn.Module, projection: nn.Module) -> None:
+        super().__init__()
+        self.model = model
+        self.projection = projection
+
+    def forward(self, x: torch.Tensor, with_latent: bool=False, fake_relu: bool=False, 
+                no_relu: bool=False, layer_num: Optional[int]=None):
+        op, rep = inference_with_features(self.model, x, with_latent, 
+                                         fake_relu, no_relu, layer_num)
+        return op, self.projection(rep)
+
 
 class SimCLRWrapper(LightningModule):
     """
@@ -107,6 +126,7 @@ class SimCLRWrapper(LightningModule):
                  feat_dim: int = 128,
                  num_nodes: int = 1,
                  gpus: int = 1,
+                 adv_aug: bool = False,
                  weight_decay: Optional[float] = 1.0e-06, 
                  step_lr: Optional[float] = None, 
                  step_lr_gamma: Optional[float] = None, 
@@ -131,6 +151,10 @@ class SimCLRWrapper(LightningModule):
 
         global_batch_size = num_nodes * gpus * batch_size if gpus > 0 else batch_size
         self.train_iters_per_epoch = num_samples // global_batch_size
+        if adv_aug:
+            self.attacker = Attacker(
+                CompositeModule(self.model, self.projection), 
+                self.normalizer)
 
     def forward(self, x, *args, **kwargs):
         backbone_ft = inference_with_features(self.model, self.normalizer(x), 
@@ -175,6 +199,13 @@ class SimCLRWrapper(LightningModule):
         (x_views), y = batch
         assert len(x_views) == self.hparams.views
 
+        if hasattr(self, 'attacker'):
+            noise = torch.ones_like(x_views[0])
+            torch.normal(mean=0., std=0.00001, size=noise.shape, out=noise)
+            x_views = [self.attacker(x + noise, self(x).detach(), 
+                                     **self.attack_kwargs)[0].detach() \
+                                         for x in x_views]
+
         ops = [self(x) for x in x_views]
         all_combinations = list(itertools.combinations(ops, 2))
         losses = torch.empty(len(all_combinations), device=ops[0].device)
@@ -187,7 +218,7 @@ class SimCLRWrapper(LightningModule):
         loss = self.shared_step(batch)
         self.loss_meter.update(loss.item(), len(batch[-1]))
         return {'loss': loss}
-    
+
     def training_epoch_end(self, training_outputs):
         self.log("train_loss", self.loss_meter.avg)
         self.loss_meter.reset()

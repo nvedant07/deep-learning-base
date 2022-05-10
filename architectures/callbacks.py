@@ -41,8 +41,9 @@ class LightningWrapper(LightningModule):
 
         assert dataset_name or (mean and std), \
             'Both dataset_name and (mean, std) cannot be None'
-        if not (mean and std):
+        if mean is None:
             mean = ds.DATASET_PARAMS[dataset_name]['mean']
+        if std is None:
             std = ds.DATASET_PARAMS[dataset_name]['std']
         self.normalizer = InputNormalize(mean, std)
         self.loss = ds.DATASET_PARAMS[dataset_name]['loss'] \

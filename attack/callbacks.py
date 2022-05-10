@@ -124,7 +124,7 @@ class AdvCallback(Callback):
             'model2': self.model2, 
             'targ2': self.targ2
         }
-    
+
     def get_val_kwargs(self):
         return {
             'constraint': self.constraint_val,

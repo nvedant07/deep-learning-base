@@ -5,6 +5,7 @@ import torch.nn as nn
 import lpips
 
 from .base_rep_loss import BaseLoss
+from architectures.inference import inference_with_features
 
 ROBUST_MODEL_WEIGHTS = {
     'resnet18_madry_imagenet': '/NS/twitter_archive2/work/vnanda/adv-robustness/logs/robust_imagenet/eps3/resnet-18-l2-eps3.ckpt',
@@ -13,24 +14,13 @@ ROBUST_MODEL_WEIGHTS = {
 }
 
 
-def forward_models(model, inp):
-    if isinstance(model, nn.DataParallel):
-        model_name = model.module.__class__.__name__
-    else:
-        model_name = model.__class__.__name__
-    fake_relu = True
-    if model_name == 'VGG' or model_name == 'InceptionV3' or 'sparse' in model_name.lower():
-        fake_relu = False
-    return model(inp, with_latent=True, fake_relu=fake_relu)
-
-
 class LPNormLossSingleModel(BaseLoss):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
     def __call__(self, model1, model2, inp, targ1, targ2):
-        _, rep1 = forward_models(model1, inp)
+        _, rep1 = inference_with_features(model1, inp, with_latent=True, fake_relu=True)
         self.model1_loss_normed = ch.div(ch.norm(rep1 - targ1, p=self.lpnorm_type, dim=1), 
                                             ch.norm(targ1, p=self.lpnorm_type, dim=1))
         self.model1_loss = ch.norm(rep1 - targ1, p=self.lpnorm_type, dim=1)
@@ -88,7 +78,7 @@ class LpNormLossSingleModelPerceptual(BaseLoss):
     def __call__(self, model1, model2, inp, targ1, targ2):
         assert self.target_inp is not None, 'Must call `set_target_inps` first!'
 
-        _, rep1 = forward_models(model1, inp)
+        _, rep1 = inference_with_features(model1, inp, with_latent=True, fake_relu=True)
         self.model1_loss_normed = ch.div(ch.norm(rep1 - targ1, p=self.args.lpnorm_type, dim=1), 
                                             ch.norm(targ1, p=self.args.lpnorm_type, dim=1))
         self.model1_loss = ch.norm(rep1 - targ1, p=self.args.lpnorm_type, dim=1)

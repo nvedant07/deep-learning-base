@@ -100,11 +100,11 @@ def create_model(model_name: str,
         loading_function(model, pretrained, checkpoint_path)
     else:
         # Use timm for ImageNet and other big dataset models 
-        should_custom_load = loading_function != load_pretrained_weights and pretrained and checkpoint_path
+        should_custom_load = pretrained and checkpoint_path
         model = timm.create_model(model_name, 
                                   num_classes=ds.DATASET_PARAMS[dataset_name]['num_classes'],
-                                  pretrained=False if should_custom_load else pretrained, 
-                                  checkpoint_path='' if should_custom_load else checkpoint_path)
+                                  pretrained=False, # default loading happens via loading_function
+                                  checkpoint_path='') # default loading happens via loading_function
         if should_custom_load:    loading_function(model, pretrained, checkpoint_path)
 
     return callback(model)
