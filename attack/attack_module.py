@@ -189,7 +189,11 @@ class Attacker(ch.nn.Module):
 
                     x = step.step(x, grad)
                     x = step.project(x)
-                    if do_tqdm: iterator.set_description("Current loss: {l}".format(l=loss))
+                    if do_tqdm:
+                        tqdm_str = 'Current loss: {l}'.format(l=loss)
+                        if custom_loss:
+                            tqdm_str += f' {str(custom_loss)}'
+                        iterator.set_description(tqdm_str)
 
             # Save computation (don't compute last loss) if not use_best
             if not use_best: 

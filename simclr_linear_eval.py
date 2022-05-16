@@ -23,8 +23,10 @@ parser.add_argument('--source_dataset', type=str, default='cifar10')
 parser.add_argument('--target_dataset', type=str, default='cifar10')
 parser.add_argument('--model', type=str, default='resnet18')
 parser.add_argument('--seed', type=int, default=1)
+parser.add_argument('--simclr_batch_size', type=int, default=1024)
 parser.add_argument('--batch_size', type=int, default=None)
 parser.add_argument('--max_epochs', type=int, default=None)
+parser.add_argument('--adv_aug', type=bool, default=False)
 args = parser.parse_args()
 
 
@@ -56,11 +58,13 @@ dm = DATA_MODULES[target_dataset](
     transform_test=DATASET_PARAMS[source_dataset]['transform_test'])
 
 
-dirpath = f'/NS/robustness_2/work/vnanda/deep_learning_base/checkpoints/{source_dataset}/{model}/simclr_bs_512/lars_excludebn_True'
+adv = f'{args.simclr_batch_size}_adv_{args.adv_aug}' if args.adv_aug else args.simclr_batch_size
+dirpath = f'/NS/robustness_2/work/vnanda/deep_learning_base/checkpoints/{source_dataset}/{model}/simclr_bs_{adv}/lars_excludebn_True'
+
 model_checkpoints = glob.glob(f'{dirpath}/*_rand_seed_{args.seed}.ckpt')
 
 for checkpoint_path in model_checkpoints:
-    if os.path.exists(f'{checkpoint_path.split(".ckpt")[0]}_{target_dataset}_rescaled_linear_eval-topk=1.ckpt'):
+    if os.path.exists(f'{checkpoint_path.split(".ckpt")[0]}_{target_dataset}_linear_eval-topk=1.ckpt'):
         continue
     # Use the lineareval SimCLR wrapper to model -- use standard data transforms
     m1 = arch.create_model(model, source_dataset, pretrained=pretrained,
@@ -81,7 +85,7 @@ for checkpoint_path in model_checkpoints:
     checkpointer = NicerModelCheckpointing(
                                 save_partial=[f'model.{x[0]}' for x in list(m1.model.named_parameters())[-2:]],
                                 dirpath=dirpath, 
-                                filename=f'{fname}_{target_dataset}_rescaled_linear_eval', 
+                                filename=f'{fname}_{target_dataset}_linear_eval', 
                                 save_top_k=1,
                                 every_n_epochs=0,
                                 save_last=False,

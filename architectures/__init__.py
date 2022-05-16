@@ -38,6 +38,12 @@ def load_state_dict(checkpoint_path, use_ema=False):
         if state_dict_key:
             state_dict = checkpoint[state_dict_key]
             new_state_dict = OrderedDict()
+            for k, v in state_dict.items():
+                # strip `module.` prefix
+                name = k[7:] if k.startswith('module') else k
+                new_state_dict[name] = v
+            state_dict = new_state_dict.copy()
+            new_state_dict = OrderedDict()
             if sum([k.startswith('model') for k in state_dict.keys()]) > 0:
                 for k, v in state_dict.items():
                     # strip `model.` prefix

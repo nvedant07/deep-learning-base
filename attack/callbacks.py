@@ -6,7 +6,7 @@ from pytorch_lightning.utilities.types import STEP_OUTPUT
 import torch as ch
 from torch.nn.modules.loss import _Loss
 from attack.attack_steps import AttackerStep
-from attack.base_rep_loss import BaseLoss
+from attack.losses import BaseLoss, CompositeLoss
 
 class AdvCallback(Callback):
     """
@@ -34,7 +34,7 @@ class AdvCallback(Callback):
                  random_restarts_test: int = 0,
                  do_tqdm: bool = False,
                  targeted: bool = False,
-                 custom_loss: Union[BaseLoss, _Loss] = None, 
+                 custom_loss: Union[CompositeLoss, BaseLoss, _Loss] = None, 
                  should_normalize: bool = True,
                  orig_input: Optional[ch.Tensor] = None, 
                  use_best: bool = True, 
