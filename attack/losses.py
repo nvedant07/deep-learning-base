@@ -3,7 +3,6 @@ import numpy as np
 import torch as ch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchvision.utils import save_image
 import os
 
 import lpips
@@ -28,7 +27,7 @@ class BaseLoss:
 
     def _set_transforms(self, t) -> None:
         self.transforms = t
-    
+
     def _set_normalizer(self, normalizer) -> None:
         self.normalizer = normalizer
     
@@ -41,10 +40,11 @@ class BaseLoss:
         ## pass normalizer from attack_module to __init__ of BaseLoss
         if hasattr(self, 'fft_transform'):
             inp = self.fft_transform(inp)
-        if isinstance(self, LPNormLossSingleModel):
+        if isinstance(self, LPNormLossSingleModel) or \
+            isinstance(self, LpNormLossSingleModelPerceptual):
             if hasattr(self, 'transforms'):
-                ## transforms should only be applied for Losses that operate on 
-                ## hidden reps
+                ## transforms should only be applied for Losses 
+                ## that operate on hidden reps
                 inp = self.transforms(inp)
             if hasattr(self, 'normalizer'):
                 inp = self.normalizer(inp)
@@ -215,63 +215,73 @@ class LpNormLossSingleModelPerceptual(BaseLoss):
     Uses perceptual loss (LPIPS) to simulate human perception, goal of this loss 
     is to generate images which are perceptually different from the target.
     """
-    def __init__(self, *args, **kwargs):
+    def __init__(self, lpips_model, lpips_model_path, 
+                 lpnorm_type, scaling_factor=None,
+                 *args, **kwargs):
         """
-        args = first argument should be the 
-        args must contain the model name to be used for LPIPS. Valid model names:
-        args.lpips_model: model architecture
+        lpips_model: model architecture
             alex (for finetuned weights, use 
-                   /NS/twitter_archive2/work/vnanda/PerceptualSimilarity/lpips/weights/v0.1/alex.pth)
+                   /NS/twitter_archive2/work/vnanda/PerceptualSimilarity/lpips/weights/v0.1/alex.pth,
+                  for ImageNet weights, use pretrained=False)
             vgg16 (for finetuned weights, use
-                   /NS/twitter_archive2/work/vnanda/PerceptualSimilarity/lpips/weights/v0.1/vgg.pth)
+                   /NS/twitter_archive2/work/vnanda/PerceptualSimilarity/lpips/weights/v0.1/vgg.pth,
+                   for ImageNet weights, use pretrained=False)
             squeeze (for finetuned weights, use 
-                   /NS/twitter_archive2/work/vnanda/PerceptualSimilarity/lpips/weights/v0.1/squeeze.pth)
+                   /NS/twitter_archive2/work/vnanda/PerceptualSimilarity/lpips/weights/v0.1/squeeze.pth,
+                   for ImageNet weights, use pretrained=False)
             resnet18
             resnet18_madry_imagenet
             resnet50_madry_imagenet
             vgg16_bn_madry_imagenet
 
-        args.lpips_model_path: if set to None, then standard ImageNet weights are used. 
+        lpips_model_path: if set to None, then standard ImageNet weights are used. 
             For models of the form *_madry_*, there must be a path, if None is specified, 
             then the default ones are used (defined in `ROBUST_MODEL_WEIGHTS`)
         """
         super().__init__(*args, **kwargs)
-        if kwargs['lpips_model'] in ROBUST_MODEL_WEIGHTS and kwargs['lpips_model_path'] is None:
-            model_path = ROBUST_MODEL_WEIGHTS[kwargs['lpips_model']]
+        self.lpnorm_type = lpnorm_type
+        if lpips_model in ROBUST_MODEL_WEIGHTS and lpips_model_path is None:
+            model_path = ROBUST_MODEL_WEIGHTS[lpips_model]
         else:
-            model_path = args.lpips_model_path
-        self.lpips = lpips.LPIPS(net=args.lpips_model, 
+            model_path = lpips_model_path
+        self.lpips = lpips.LPIPS(net=lpips_model, 
                                  model_path=model_path, 
-                                 pretrained=model_path is not None, 
-                                 device=ch.device(f'cuda:{kwargs["devices"][0]}'))
+                                 pretrained=model_path is not None)
         self.target_inp = None
-        self.scaling_factor = None
+        self.scaling_factor = scaling_factor
 
-    def set_target_inps(self, target_inp) -> None:
+    def _set_target_inps(self, target_inp) -> None:
         self.target_inp = target_inp
 
     def __call__(self, model1, model2, inp, targ1, targ2):
+        self.lpips = self.lpips.to(inp.device)
         assert self.target_inp is not None, 'Must call `set_target_inps` first!'
 
         _, rep1 = inference_with_features(model1, inp, with_latent=True, fake_relu=True)
-        self.model1_loss_normed = ch.div(ch.norm(rep1 - targ1, p=self.args.lpnorm_type, dim=1), 
-                                            ch.norm(targ1, p=self.args.lpnorm_type, dim=1))
-        self.model1_loss = ch.norm(rep1 - targ1, p=self.args.lpnorm_type, dim=1)
+        self.model1_loss_normed = ch.div(ch.norm(rep1 - targ1, p=self.lpnorm_type, dim=1), 
+                                            ch.norm(targ1, p=self.lpnorm_type, dim=1))
+        self.model1_loss = ch.norm(rep1 - targ1, p=self.lpnorm_type, dim=1)
         # LPIPS expects images in [-1, 1] so pass normalize = True
         self.lpips_distance = self.lpips(inp, self.target_inp, normalize=True).squeeze()
 
         if self.scaling_factor is None:
             # set it initially, otherwise this will never converge
             self.scaling_factor = ch.mean(self.model1_loss_normed).item()/ch.mean(self.lpips_distance).item()
-        loss = self.model1_loss - self.scaling_factor * self.lpips_distance
+        self.loss = self.model1_loss_normed - self.scaling_factor * self.lpips_distance
 
         rep1 = None
         ch.cuda.empty_cache()
 
-        return loss
+        return self.loss
+
+    def clear_cache(self) -> None:
+        self.model1_loss_normed, self.model1_loss, self.lpips_distance = None, None, None
+        self.loss, self.lpips_distance = None, None
+        self.lpips = self.lpips.cpu()
+        ch.cuda.empty_cache()
 
     def __repr__(self) -> str:
-        return f'Model1 Loss: {ch.mean(self.model1_loss)} ({ch.mean(self.model1_loss_normed)})'\
+        return f'Loss: {ch.mean(self.loss)}, Model1 Loss: {ch.mean(self.model1_loss)} ({ch.mean(self.model1_loss_normed)})'\
                f'LPIPS Dist: {ch.mean(self.lpips_distance)}'
 
 
@@ -320,37 +330,3 @@ class CompositeLoss(BaseLoss):
     def __repr__(self) -> str:
         return ' '.join([str(l) for l in self.losses])
 
-
-
-
-LOSSES_MAPPING = {
-    'reg_free': LPNormLossSingleModel(lpnorm_type=2), 
-    'freq': CompositeLoss(
-        [LPNormLossSingleModel(lpnorm_type=2),
-        TVLoss(beta=2.),
-        BlurLoss(),
-        L1Loss(constant=0.5)],
-        weights=[10., 0.0005, 0.0005, 0.00005]
-    ),
-    'freq_tv': CompositeLoss(
-        [LPNormLossSingleModel(lpnorm_type=2),
-        TVLoss(beta=2.)],
-        weights=[10., 0.0005]
-    ),
-    'freq_blur': CompositeLoss(
-        [LPNormLossSingleModel(lpnorm_type=2),
-        BlurLoss()],
-        weights=[10., 0.0005]
-    ),
-    'freq_lp': CompositeLoss(
-        [LPNormLossSingleModel(lpnorm_type=2),
-        L1Loss(constant=0.5)],
-        weights=[10., 0.00005]
-    ),
-    'freq_tv_l6': CompositeLoss(
-        [LPNormLossSingleModel(lpnorm_type=2),
-        TVLoss(beta=2.),
-        LpLoss(p=6)],
-        weights=[10., 0.0005, 1.]
-    ), # to match https://arxiv.org/abs/1412.0035
-}

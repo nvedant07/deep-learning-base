@@ -15,11 +15,20 @@ class InvertedRepWrapper(AdvAttackWrapper):
         # [batch, channels, wdith, height] on GPU
         seeds = torch.ones((len(x), *self.seed.shape), device=self.device) * \
             self.seed.unsqueeze(0).to(self.device)
+        if 'custom_loss' in kwargs:
+            if hasattr(kwargs['custom_loss'], 'scaling_factor'):
+                if kwargs['custom_loss'].scaling_factor and \
+                    kwargs['custom_loss'].scaling_factor < 0:
+                    ## make it close to seed
+                    kwargs['custom_loss']._set_target_inps(seeds)
+                else:
+                    kwargs['custom_loss']._set_target_inps(x)
         ir, _ = self.attacker(seeds, target_rep, **kwargs)
         return x, ir
 
     def predict_step(self, batch, batch_idx, dataloader_idx: Optional[int] = None):
         x, y  = batch
+        # self.attack_kwargs['custom_loss']._set_target_inps(x)
         og, inverted_rep = self(x, True, **self.attack_kwargs)
         og, inverted_rep = og.detach(), inverted_rep.detach()
         if torch.distributed.is_available() and torch.distributed.is_initialized():

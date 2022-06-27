@@ -73,7 +73,7 @@ class Attacker(ch.nn.Module):
                 :samp:`loss, None`, where loss is a tensor of size N
                 (per-element loss).
             should_normalize (bool) : If False, don't normalize the input
-                (not recommended unless normalization is done in the
+                (not recommended unless normalization is done in 
                 custom_loss instead).
             orig_input (ch.tensor|None) : If not None, use this as the
                 center of the perturbation set, rather than :samp:`x`.

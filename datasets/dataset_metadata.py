@@ -142,6 +142,14 @@ SIMCLR_TRAIN_TRANSFORMS = lambda size, s=1: transforms.Compose(
     ]
 ) # same as original simclr implementation as well as https://github.com/AndrewAtanov/simclr-pytorch and https://github.com/sthalles/SimCLR
 
+SIMCLR_TRAIN_TRANSFORMS_NOCOLOR = lambda size, s=1: transforms.Compose(
+    [
+        transforms.RandomResizedCrop(size=size),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        GaussianBlur(size//2, 0.5)
+    ]
+) # same as original simclr implementation as well as https://github.com/AndrewAtanov/simclr-pytorch and https://github.com/sthalles/SimCLR
 
 DATASET_PARAMS = {
     'imagenet': {

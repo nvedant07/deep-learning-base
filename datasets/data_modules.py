@@ -3,7 +3,7 @@ from torchvision import datasets, transforms
 from torch.utils.data import random_split, DataLoader, Dataset, Sampler, Subset
 import pytorch_lightning as pl
 from pytorch_lightning import utilities as pl_utils
-from typing import Iterable, Optional, Sequence, Union, Callable
+from typing import Dict, Iterable, Optional, Sequence, Union, Callable
 from .dataset_metadata import DATASET_PARAMS
 import numpy as np
 
@@ -25,7 +25,7 @@ class BaseDataModule(pl.LightningDataModule):
                  transform_train: Optional[Callable] = None, 
                  transform_test: Optional[Callable] = None, 
                  val_frac: int = 0.1,
-                 **dataset_kwargs):
+                 dataset_kwargs: Dict = {}):
         super().__init__()
         self.data_dir = data_dir
         self.batch_size = batch_size

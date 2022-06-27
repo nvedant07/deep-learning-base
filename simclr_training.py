@@ -26,6 +26,7 @@ parser.add_argument('--max_epochs', type=int, default=None)
 parser.add_argument('--optim', type=str, default='lars')
 parser.add_argument('--adv_aug', type=bool, default=False)
 parser.add_argument('--exclude_bn_bias', type=int, choices=[0,1], default=0)
+parser.add_argument('--nocolor', type=int, choices=[0,1], default=0)
 args = parser.parse_args()
 
 
@@ -59,7 +60,7 @@ dm = DATA_MODULES[dataset](
     val_frac=0.,
     batch_size=batch_size)
 # convert datamodule into a SimCLR datamodule
-simclr_dm(dm)
+simclr_dm(dm, nocolor=bool(args.nocolor))
 
 
 hidden_dim = inference_with_features(
@@ -87,10 +88,13 @@ m1 = arch.create_model(model, dataset, pretrained=pretrained,
 
 pl_utils.seed.seed_everything(seed, workers=True)
 
+dirpath = f'/NS/robustness_2/work/vnanda/deep_learning_base/checkpoints/{dataset}/'\
+          f'{model}/simclr_bs_{dm.batch_size}_adv_{args.adv_aug}/'\
+          f'{args.optim}_excludebn_{bool(args.exclude_bn_bias)}'
+if bool(args.nocolor):
+    dirpath += f'_nocolor'
 checkpointer = NicerModelCheckpointing(
-    dirpath=f'/NS/robustness_2/work/vnanda/deep_learning_base/checkpoints/{dataset}/'
-            f'{model}/simclr_bs_{dm.batch_size}_adv_{args.adv_aug}/'
-            f'{args.optim}_excludebn_{bool(args.exclude_bn_bias)}', 
+    dirpath=dirpath, 
     filename='{epoch}_rand_seed' + f'_{seed}', 
     every_n_epochs=50, 
     save_top_k=5, 

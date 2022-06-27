@@ -1,3 +1,4 @@
+import warnings
 import torch
 import torch.nn as nn
 
@@ -276,8 +277,8 @@ class InceptionV3(nn.Module):
             self.linear = nn.Linear(2048, num_classes)
 
     def forward(self, x, with_latent=False, fake_relu=False, no_relu=False, layer_num=None):
-        assert (not fake_relu) and (not no_relu),  \
-            "fake_relu and no_relu not yet supported for this architecture"
+        if fake_relu or no_relu:
+            warnings.warn("fake_relu and no_relu not yet supported for this architecture")
         #32 -> 30
         x = self.Conv2d_1a_3x3(x)
         x = self.Conv2d_2a_3x3(x)
