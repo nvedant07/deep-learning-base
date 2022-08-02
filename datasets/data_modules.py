@@ -10,7 +10,7 @@ import numpy as np
 
 class BaseDataModule(pl.LightningDataModule):
     def __init__(self, 
-                 dataset_class: Callable[[], Dataset],
+                 dataset_class: Callable[[], Dataset], 
                  data_dir: str = '/tmp/', 
                  shuffle_train: bool = True, 
                  shuffle_val: bool = False, 
@@ -24,7 +24,7 @@ class BaseDataModule(pl.LightningDataModule):
                  batch_sampler: Optional[Union[Sampler[Sequence], Iterable[Sequence]]] = None, 
                  transform_train: Optional[Callable] = None, 
                  transform_test: Optional[Callable] = None, 
-                 val_frac: int = 0.1,
+                 val_frac: int = 0.1, 
                  dataset_kwargs: Dict = {}):
         super().__init__()
         self.data_dir = data_dir

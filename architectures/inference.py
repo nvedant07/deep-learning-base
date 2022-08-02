@@ -26,13 +26,14 @@ def check_fake_and_no_relu(model, args, kwargs):
         elif ('no_relu' in kwargs and kwargs['no_relu']) or (len(args) > 2 and args[2]):
             model.pre_logits.__setattr__('act2', nn.Identity())
 
+### TODO: Make this general and for any layer, not just penultimate
 
 def inference_with_features(model: nn.Module, 
                             X: torch.Tensor, *args, **kwargs):
     if (('with_latent' in kwargs and kwargs['with_latent']) or \
         (len(args) and args[0])) and \
             hasattr(model, 'forward_features'):
-            
+
             check_fake_and_no_relu(model, args, kwargs)
 
             out = model.forward_features(X)
@@ -52,7 +53,7 @@ def inference_with_features(model: nn.Module,
                                                         flatten=True)
                     out = pooling(out)
                 x_latent = out
-            
+
             possible_names = ['fc', 'head']
             for name in possible_names:
                 if hasattr(model, name):
@@ -66,5 +67,5 @@ def inference_with_features(model: nn.Module,
                 pred = model(X)
 
             return pred, x_latent
-    
+
     return model(X, *args, **kwargs)

@@ -30,7 +30,12 @@ class LightningWrapper(LightningModule):
                  step_lr: Optional[float] = None, 
                  step_lr_gamma: Optional[float] = None, 
                  momentum: Optional[float] = None, 
-                 dataset_name: Optional[str] = None):
+                 dataset_name: Optional[str] = None,
+                 inference_kwargs: Dict = {}):
+        """
+        inference_kwargs are passed onto the ``inference_with_features``
+        function in architectures.inference
+        """
         super().__init__()
         self.model = model
         self.accuracy_top1 = torchmetrics.Accuracy(top_k=1)
@@ -58,11 +63,43 @@ class LightningWrapper(LightningModule):
             if step_lr_gamma is None else step_lr_gamma
         self.weight_decay = ds.DATASET_PARAMS[dataset_name]['weight_decay'] \
             if weight_decay is None else weight_decay
+        
+        self.inference_kwargs = inference_kwargs
 
     def forward(self, x, *args, **kwargs):
         return inference_with_features(self.model, 
                                        self.normalizer(x), 
                                        *args, **kwargs)
+
+    def predict_step(self, batch, batch_idx, dataloader_idx: Optional[int] = None):
+        x, y = batch
+        out, latent = self(x, **self.inference_kwargs) ## not safe; TODO: add checks
+        out, latent = out.detach(), latent.detach()
+
+        if torch.distributed.is_available() and torch.distributed.is_initialized():
+            all_y = self.all_gather(y)
+            all_y = torch.cat([all_y[i] for i in range(len(all_y))])
+            all_x = self.all_gather(x)
+            all_x = torch.cat([all_x[i] for i in range(len(all_x))])
+            all_out = self.all_gather(out)
+            all_out = torch.cat([all_out[i] for i in range(len(all_out))])
+            all_latent = self.all_gather(latent)
+            all_latent = torch.cat([all_latent[i] for i in range(len(all_latent))])
+            
+            return all_out, all_latent, all_y
+
+        return out, latent, y
+
+    def on_predict_epoch_end(self, results):
+        for i in range(len(results)):
+            cat_out, cat_latent, cat_y = None, None, None
+            for batch_res in results[i]:
+                out, latent, y = batch_res
+                cat_out = out if cat_out is None else torch.cat((cat_out, out))
+                cat_latent = latent if cat_latent is None else torch.cat((cat_latent, latent))
+                cat_y = y if cat_y is None else torch.cat((cat_y, y))
+            results[i] = (cat_out, cat_latent, cat_y)
+        return results
 
     def training_step(self, batch, batch_idx):
         ## use this for compatibility with ddp2 and dp
@@ -229,7 +266,7 @@ class AdvAttackWrapper(LightningWrapper):
     def step_end(self, step_outputs, split):
         adv_pred, clean_pred, true = step_outputs['adv_pred'], \
                                      step_outputs['clean_pred'], \
-                                     step_outputs['gt']                             
+                                     step_outputs['gt']
 
         loss_clean = self.loss(clean_pred, true).detach().item()
         running_clean_acc1 = self.accuracy_top1(clean_pred, true).detach().item()

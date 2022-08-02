@@ -27,17 +27,17 @@ class InvertedRepWrapper(AdvAttackWrapper):
         return x, ir
 
     def predict_step(self, batch, batch_idx, dataloader_idx: Optional[int] = None):
-        x, y  = batch
-        # self.attack_kwargs['custom_loss']._set_target_inps(x)
+        x, y = batch
         og, inverted_rep = self(x, True, **self.attack_kwargs)
         og, inverted_rep = og.detach(), inverted_rep.detach()
         if torch.distributed.is_available() and torch.distributed.is_initialized():
-            all_inverted_reps = self.all_gather(inverted_rep)
+            all_inverted_reps, all_og, all_y = self.all_gather(inverted_rep), \
+                self.all_gather(og), self.all_gather(y)
             all_inverted_reps = torch.cat([all_inverted_reps[i] for i in \
                 range(len(all_inverted_reps))])
-            all_og = self.all_gather(og)
             all_og = torch.cat([all_og[i] for i in range(len(all_og))])
-            return all_og, all_inverted_reps
+            all_y = torch.cat([all_y[i] for i in range(len(all_y))])
+            return all_og, all_inverted_reps, all_y
         self.attack_kwargs['custom_loss'].clear_cache()
         return og, inverted_rep, y
 
@@ -51,4 +51,3 @@ class InvertedRepWrapper(AdvAttackWrapper):
                 cat_y = y if cat_y is None else torch.cat((cat_y, y))
             results[i] = (cat_og, cat_ir, cat_y)
         return results
-
