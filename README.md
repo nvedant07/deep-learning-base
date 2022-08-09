@@ -1,4 +1,4 @@
-This is a directory for common DL code including models, adversarial attacks, supervised training. This is provides easy ways to extend models and training paradigms. This provides a smooth interface between many SOTA libraries like ``timm`` and ``robustness``. All the code relies on PyTorch and PyTorch-Lightning.
+This is a directory for common DL code including models, adversarial attacks, supervised training. This provides easy ways to extend models and training paradigms. This provides a smooth interface between many SOTA libraries like ``timm`` and ``robustness``. All the code relies on PyTorch and PyTorch-Lightning.
 
 ## Models
 
