@@ -5,6 +5,7 @@ import torch.nn as nn
 from timm.models import layers
 from torchvision.models.feature_extraction import get_graph_node_names, create_feature_extractor
 from .cifar_models.custom_modules import FakeReLUM
+from timm.models.fx_features import GraphExtractNet
 
 
 def check_fake_and_no_relu(model, args, kwargs):
@@ -30,21 +31,22 @@ def check_fake_and_no_relu(model, args, kwargs):
 
 def inference_with_features(model: nn.Module, 
                             X: torch.Tensor, *args, **kwargs):
-    if (('with_latent' in kwargs and kwargs['with_latent']) or \
-        (len(args) and args[0])) and \
-            hasattr(model, 'forward_features'):
-
+    if ('with_latent' in kwargs and kwargs['with_latent']):
             check_fake_and_no_relu(model, args, kwargs)
-
             out = model.forward_features(X)
-            if model.__class__.__name__ == 'VGG': 
+            if model.__class__.__name__ == 'VisionTransformer':
+                if model.global_pool:
+                    out = out[:, model.num_prefix_tokens:].mean(dim=1) if model.global_pool == 'avg' else out[:, 0]
+                out = model.fc_norm(out)
+                x_latent = out
+            elif model.__class__.__name__ == 'VGG': 
                 # special case; pooling is done in the head
                 out = model.forward_head(out, pre_logits=True)
                 x_latent = model.head(out, pre_logits=True)
             else:
                 # these features need to be pooled
                 if hasattr(model, 'global_pool'):
-                    out = model.global_pool(out) 
+                    out = model.global_pool(out)
                     # check if global_pool contains Flatten
                     if not isinstance(model.global_pool.flatten, nn.Flatten):
                         out = nn.Flatten(1)(out)
@@ -67,5 +69,31 @@ def inference_with_features(model: nn.Module,
                 pred = model(X)
 
             return pred, x_latent
+    elif 'layer_num' in kwargs and kwargs['layer_num'] is not None:
+        _, node_names = get_graph_node_names(model)        
+        filtered_nodes = []
+        if model.__class__.__name__ == 'VisionTransformer':
+            block_number_to_layer = {}
+            for n in node_names:
+                if n.startswith('blocks.'):
+                    current_block = int(n.split('blocks.')[1].split('.')[0])
+                    if current_block not in block_number_to_layer:
+                        block_number_to_layer[current_block] = [n]
+                    else:
+                        block_number_to_layer[current_block].append(n)
+                if n in ['fc_norm']:
+                    filtered_nodes.append(n)
+            for block in sorted(block_number_to_layer.keys(), reverse=True):
+                filtered_nodes = [block_number_to_layer[block][-1]] + filtered_nodes
+        elif model.__class__.__name__ == 'ResNetV2':
+            for n in node_names:
+                if n.endswith('.pool') or n.endswith('.add'):
+                    filtered_nodes.append(n)
+        feature_model = GraphExtractNet(model, filtered_nodes)
+        all_fts = feature_model(X)
+        latent = all_fts[kwargs['layer_num']]
+        if len(latent.shape) > 2:
+            latent = latent.flatten(1)
+        return model.head(all_fts[-1]), latent
 
-    return model(X, *args, **kwargs)
+    return model(X)

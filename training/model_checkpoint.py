@@ -80,9 +80,10 @@ class NicerModelCheckpointing(ModelCheckpoint):
     
     def save_final_checkpoint(self, trainer: Trainer, filepath: str):
         if len(self.save_partial) > 0:
-            sd = {k:v for k,v in \
-                trainer.training_type_plugin.model.state_dict().items() if k in self.save_partial}
-            torch.save({'state_dict': sd}, filepath)
+            save_dict = trainer.checkpoint_connector.dump_checkpoint(self.save_weights_only)
+            save_dict['state_dict'] = {k:v for k,v in save_dict['state_dict'].items() \
+                if k in self.save_partial}
+            trainer.training_type_plugin.save_checkpoint(save_dict, filepath)
         else:
             trainer.save_checkpoint(filepath, self.save_weights_only)
 

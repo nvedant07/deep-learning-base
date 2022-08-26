@@ -81,7 +81,7 @@ class BaseDataModule(pl.LightningDataModule):
 
     def init_remaining_attrs(self, dname):
         for k, v in DATASET_PARAMS[dname].items():
-            if not hasattr(self, k):
+            if not hasattr(self, k) or getattr(self,k) is None:
                 self.__setattr__(k, v)
 
 
@@ -208,9 +208,57 @@ class ImageNetDataModule(BaseDataModule):
                 transform=self.transform_test, **self.dataset_kwargs)
 
 
+class OxfordIIITPetsDataModule(BaseDataModule):
+    def __init__(self, dataset_class=datasets.OxfordIIITPet, *args, **kwargs):
+        super().__init__(dataset_class, *args, **kwargs)
+    
+    def prepare_data(self):
+        ## only needed when data needs to be downloaded
+        self.dataset_class(self.data_dir, split='trainval', download=True)
+        self.dataset_class(self.data_dir, split='test', download=True)
+    
+    def setup(self, stage: Optional[str] = None):
+        pl_utils.seed.seed_everything(self.random_split)
+        if stage in (None, 'fit', 'validate'):
+            full_ds = self.dataset_class(root=self.data_dir, split='trainval', 
+                transform=self.transform_train, **self.dataset_kwargs)
+            train_size = int((1-self.val_frac)*len(full_ds))
+            self.train_ds, self.val_ds = random_split(full_ds, [train_size, len(full_ds) - train_size])
+            self.val_ds.__setattr__('transform', self.transform_test)
+            if self.subset:
+                self.subset_train_ds()
+        if stage in (None, 'test'):
+            self.test_ds = self.dataset_class(root=self.data_dir, split='test', 
+                transform=self.transform_test, **self.dataset_kwargs)
+
+
+class Flowers102(BaseDataModule):
+    def __init__(self, dataset_class=datasets.Flowers102, *args, **kwargs):
+        super().__init__(dataset_class, *args, **kwargs)
+    
+    def prepare_data(self):
+        ## only needed when data needs to be downloaded
+        self.dataset_class(self.data_dir, download=True)
+    
+    def setup(self, stage: Optional[str] = None):
+        pl_utils.seed.seed_everything(self.random_split)
+        if stage in (None, 'fit', 'validate'):
+            self.train_ds = self.dataset_class(root=self.data_dir, split='train', 
+                transform=self.transform_train, **self.dataset_kwargs)
+            self.val_ds = self.dataset_class(root=self.data_dir, split='val', 
+                transform=self.transform_test, **self.dataset_kwargs)
+            if self.subset:
+                self.subset_train_ds()
+        if stage in (None, 'test'):
+            self.test_ds = self.dataset_class(root=self.data_dir, split='test', 
+                transform=self.transform_test, **self.dataset_kwargs)
+
+
 DATA_MODULES = {
     'imagenet': ImageNetDataModule, 
     'cifar10': CIFAR10DataModule, 
     'cifar100': CIFAR100DataModule, 
-    'stl10': STL10DataModule
+    'stl10': STL10DataModule,
+    'oxford-iiit-pets': OxfordIIITPetsDataModule,
+    'flowers': Flowers102
 }

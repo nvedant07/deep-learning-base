@@ -100,17 +100,17 @@ def create_model(model_name: str,
     
     if dataset_name not in ds.DATASET_PARAMS:    dataset_name = 'imagenet'
 
-    if 'cifar' in dataset_name:
+    if dataset_name.endswith('cifar10'):
         assert model_name in cifar_models.model_names, f'{model_name} not available for {dataset_name}'
         model = cifar_models.create_model_fn(model_name)(num_classes=ds.DATASET_PARAMS[dataset_name]['num_classes'])
         loading_function(model, pretrained, checkpoint_path)
     else:
         # Use timm for ImageNet and other big dataset models 
-        should_custom_load = pretrained and checkpoint_path
+        should_custom_load = pretrained and checkpoint_path != ''
         model = timm.create_model(model_name, 
                                   num_classes=ds.DATASET_PARAMS[dataset_name]['num_classes'],
-                                  pretrained=False, # default loading happens via loading_function
-                                  checkpoint_path='') # default loading happens via loading_function
+                                  pretrained= ~should_custom_load and pretrained, ## 
+                                  checkpoint_path='') ## default loading happens via loading_function
         if should_custom_load:    loading_function(model, pretrained, checkpoint_path)
 
     return callback(model)

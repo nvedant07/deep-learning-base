@@ -36,7 +36,7 @@ class BaseLoss:
     
     def _transform_input(self, inp):
         ## CAUTION: Normalization must be applied **after** the transforms
-        ## So pass the should_normalize flasg as False in attack_module and
+        ## So pass the should_normalize flag as False in attack_module and
         ## pass normalizer from attack_module to __init__ of BaseLoss
         if hasattr(self, 'fft_transform'):
             inp = self.fft_transform(inp)

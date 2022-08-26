@@ -2,10 +2,10 @@ from pytorch_lightning.trainer.trainer import Trainer
 from pytorch_lightning.core.lightning import LightningModule
 import torch.nn as nn
 import torch
-from torch.optim import SGD, lr_scheduler
+from torch.optim import SGD, lr_scheduler, Adam
 import torchmetrics
 from typing import Dict, Optional, Callable, Union
-from .utils import InputNormalize
+from .utils import InputNormalize, OPTIMIZERS, _construct_opt_params
 from datasets import dataset_metadata as ds
 from attack.attack_module import Attacker
 from architectures.utils import AverageMeter
@@ -27,11 +27,12 @@ class LightningWrapper(LightningModule):
                  loss: Optional[Callable] = None, 
                  lr: Optional[float] = None, 
                  weight_decay: Optional[float] = None, 
+                 momentum: Optional[float] = None, 
                  step_lr: Optional[float] = None, 
                  step_lr_gamma: Optional[float] = None, 
-                 momentum: Optional[float] = None, 
                  dataset_name: Optional[str] = None,
-                 inference_kwargs: Dict = {}):
+                 inference_kwargs: Dict = {},
+                 optimizer: Optional[str] = 'sgd'):
         """
         inference_kwargs are passed onto the ``inference_with_features``
         function in architectures.inference
@@ -63,8 +64,8 @@ class LightningWrapper(LightningModule):
             if step_lr_gamma is None else step_lr_gamma
         self.weight_decay = ds.DATASET_PARAMS[dataset_name]['weight_decay'] \
             if weight_decay is None else weight_decay
-        
         self.inference_kwargs = inference_kwargs
+        self.optimizer = optimizer
 
     def forward(self, x, *args, **kwargs):
         return inference_with_features(self.model, 
@@ -85,7 +86,6 @@ class LightningWrapper(LightningModule):
             all_out = torch.cat([all_out[i] for i in range(len(all_out))])
             all_latent = self.all_gather(latent)
             all_latent = torch.cat([all_latent[i] for i in range(len(all_latent))])
-            
             return all_out, all_latent, all_y
 
         return out, latent, y
@@ -101,87 +101,65 @@ class LightningWrapper(LightningModule):
             results[i] = (cat_out, cat_latent, cat_y)
         return results
 
-    def training_step(self, batch, batch_idx):
+    def step(self, batch, batch_idx):
         ## use this for compatibility with ddp2 and dp
         x, y = batch
         op = self(x)
         return {'pred': op, 'gt': y}
+    
+    def step_end(self, step_ops, stage):
+        ## use this for compatibility with ddp2 and dp
+        pred, true = step_ops['pred'], step_ops['gt']
+        loss = self.loss(pred, true)
+        self.accuracy1_meter.update(self.accuracy_top1(pred, true))
+        self.accuracy5_meter.update(self.accuracy_top5(pred, true))
+        self.loss_meter.update(loss)
+        self.log(f'running_{stage}_acc', self.accuracy_top1(pred, true))
+        return {'loss': loss}
+    
+    def epoch_end(self, all_ops, stage):
+        self.log(f'{stage}_acc1', self.accuracy1_meter.avg)
+        self.accuracy1_meter.reset()
+        self.log(f'{stage}_acc5', self.accuracy5_meter.avg)
+        self.accuracy5_meter.reset()
+        self.log(f'{stage}_loss', self.loss_meter.avg)
+        self.loss_meter.reset()
+
+    def training_step(self, batch, batch_idx):
+        return self.step(batch, batch_idx)
 
     def training_step_end(self, training_step_outputs):
-        ## use this for compatibility with ddp2 and dp
-        pred, true = training_step_outputs['pred'], training_step_outputs['gt']
-        train_loss = self.loss(pred, true)
-        self.log('running_acc', self.accuracy_top1(pred, true))
-        return {'loss': train_loss, 
-                'acc5': self.accuracy_top5(pred, true),
-                'acc1': self.accuracy_top1(pred, true),
-                'num_samples': len(pred)}
+        return self.step_end(training_step_outputs, 'train')
 
     def training_epoch_end(self, training_outputs):
-        accs1, accs5, losses, samples = [], [], [], []
-        for op in training_outputs:
-            accs1.append(op['acc1'] * op['num_samples'])
-            accs5.append(op['acc5'] * op['num_samples'])
-            losses.append(op['loss'] * op['num_samples'])
-            samples.append(op['num_samples'])
-        self.log(f'train_acc1', sum(accs1)/sum(samples))
-        self.log(f'train_acc5', sum(accs5)/sum(samples))
-        self.log(f'train_loss', sum(losses)/sum(samples))
+        self.epoch_end(training_outputs, 'train')
 
     def validation_step(self, batch, batch_idx):
-        x, y = batch
-        op = self(x)
-        return {'pred': op, 'gt': y}
+        return self.step(batch, batch_idx)
 
     def validation_step_end(self, validation_step_outputs):
-        ## use this for compatibility with ddp2 and dp
-        pred, true = validation_step_outputs['pred'], validation_step_outputs['gt']
-        val_loss = self.loss(pred, true)
-        self.log('running_acc', self.accuracy_top1(pred, true))
-        return {'loss': val_loss,
-                'acc5': self.accuracy_top5(pred, true), 
-                'acc1': self.accuracy_top1(pred, true),
-                'num_samples': len(pred)}
+        return self.step_end(validation_step_outputs, 'val')
 
     def validation_epoch_end(self, validation_outputs):
-        accs1, accs5, losses, samples = [], [], [], []
-        for op in validation_outputs:
-            accs1.append(op['acc1'] * op['num_samples'])
-            accs5.append(op['acc5'] * op['num_samples'])
-            losses.append(op['loss'] * op['num_samples'])
-            samples.append(op['num_samples'])
-        self.log(f'val_acc1', sum(accs1)/sum(samples))
-        self.log(f'val_acc5', sum(accs5)/sum(samples))
-        self.log(f'val_loss', sum(losses)/sum(samples))
-        print (f'Validation Acc: {sum(accs1)/sum(samples):.3f} (top1), '
-               f'{sum(accs5)/sum(samples):.3f} (top5)')
+        return self.epoch_end(validation_outputs, 'val')
 
     def test_step(self, batch, batch_idx):
-        x, y = batch
-        op = self(x)
-        return {'pred': op, 'gt': y}
+        return self.step(batch, batch_idx)
     
     def test_step_end(self, test_step_outputs):
-        ## use this for compatibility with ddp2 and dp
-        ## test_step_outputs here has all the splits aggregated
-        pred, true = test_step_outputs['pred'], test_step_outputs['gt']
-        return {'loss': self.loss(pred, true),
-                'acc5': self.accuracy_top5(pred, true), 
-                'acc1': self.accuracy_top1(pred, true),
-                'num_samples': len(true)}
+        self.step_end(test_step_outputs, 'test')
     
     def test_epoch_end(self, test_outputs):
-        accs1, accs5, samples = [], [], []
-        for op in test_outputs:
-            accs1.append(op['acc1'] * op['num_samples'])
-            accs5.append(op['acc5'] * op['num_samples'])
-            samples.append(op['num_samples'])
-        self.log(f'test_acc1', sum(accs1)/sum(samples))
-        self.log(f'test_acc5', sum(accs5)/sum(samples))
+        self.epoch_end(test_outputs, 'test')
+
+    def prepare_model_params(self):
+        # disable requires_grad for all but last layer
+        return list(self.model.parameters())
 
     def configure_optimizers(self):
-        optimizer = SGD(self.parameters(), self.lr, momentum=self.momentum,
-                        weight_decay=self.weight_decay)
+        optimizer = OPTIMIZERS[self.optimizer](self.prepare_model_params(), 
+            **_construct_opt_params(
+                self.optimizer, self.lr, self.weight_decay, self.momentum))
         schedule = lr_scheduler.StepLR(optimizer, 
                                        step_size=self.step_lr, 
                                        gamma=self.step_lr_gamma)
@@ -212,15 +190,19 @@ class AdvAttackWrapper(LightningWrapper):
         args will be sent to the forward function of the model
         """
         if adv:
-            x, _ = self.attacker(x, targ, **kwargs)
+            x, _ = self.attacker(x, targ, **self.attack_kwargs)
             if return_adv:
-                return (x, inference_with_features(self.model, self.normalizer(x), *args))
-        return inference_with_features(self.model, self.normalizer(x), *args)
+                return (x, 
+                        inference_with_features(
+                            self.model, self.normalizer(x), *args, **kwargs
+                            )
+                        )
+        return inference_with_features(self.model, self.normalizer(x), *args, **kwargs)
 
     def predict_step(self, batch, batch_idx, dataloader_idx: Optional[int] = None):
         x, y = batch
         adv_x, pred_adv_x = self(x, y, adv=True, return_adv=self.return_adv_samples, 
-                                **self.attack_kwargs)
+                                **self.inference_kwargs)
         adv_x, pred_adv_x = adv_x.detach(), pred_adv_x.detach()
 
         if torch.distributed.is_available() and torch.distributed.is_initialized():
@@ -286,9 +268,9 @@ class AdvAttackWrapper(LightningWrapper):
 
         self.log('running_acc_clean', self.clean_accuracy1_meter.avg)
         self.log('running_acc_adv', self.adv_accuracy1_meter.avg)
-        
+
         return {'loss': loss_adv}
-    
+
     def epoch_end(self, outputs, split):
         self.log(f'clean_{split}_acc1', self.clean_accuracy1_meter.avg)
         self.clean_accuracy1_meter.reset()
@@ -355,22 +337,15 @@ class LinearEvalWrapper(LightningWrapper):
     Input Normalization is performed here, before input is fed to the model
 
     This takes in a trained model, freezes all params apart from the final layer
-    """
-    def __init__(self, epochs, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self.epochs = epochs
 
-    def configure_optimizers(self):
+    ## CAUTION: if model uses batchnorm, be sure to set layers with batchnorm to .eval() mode
+    """
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+
+    def prepare_model_params(self):
         # disable requires_grad for all but last layer
-        parameters = list(self.parameters())
+        parameters = list(self.model.parameters())
         for p in parameters[:-2]:
             p.requires_grad = False
-        
-        params = parameters[-2:]
-        optimizer = torch.optim.Adam(params, lr=self.lr, 
-                                     weight_decay=self.weight_decay)
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 
-                                                    step_size=int(self.epochs/3), 
-                                                    gamma=0.1)
-
-        return [optimizer], [scheduler]
+        return parameters[-2:]

@@ -104,7 +104,6 @@ Resized to 256x256 then center cropped to 224x224.
 
 # Data Augmentation: supervised learning defaults
 TRAIN_TRANSFORMS_DEFAULT = lambda size: transforms.Compose([
-            transforms.Resize(size),
             transforms.RandomCrop(size, padding=4),
             transforms.RandomHorizontalFlip(),
             transforms.ColorJitter(.25,.25,.25),
@@ -127,6 +126,20 @@ Generic test data transform (no augmentation) to complement
 :meth:`robustness.data_augmentation.TEST_TRANSFORMS_DEFAULT`, takes in an image
 side length.
 """
+
+TRAIN_TRANSFORMS_TRANSFER_DEFAULT = lambda size: transforms.Compose([
+            transforms.RandomResizedCrop(size),
+            transforms.RandomHorizontalFlip(),
+            transforms.ColorJitter(.25,.25,.25),
+            transforms.RandomRotation(2),
+            transforms.ToTensor(),
+        ])
+"""
+Generic training data transform, given image side length does random cropping,
+flipping, color jitter, and rotation. Called as, for example,
+:meth:`robustness.data_augmentation.TRAIN_TRANSFORMS_DEFAULT(32)` for CIFAR-10.
+"""
+
 
 
 SIMCLR_TRAIN_TRANSFORMS = lambda size, s=1: transforms.Compose(
@@ -151,12 +164,64 @@ SIMCLR_TRAIN_TRANSFORMS_NOCOLOR = lambda size, s=1: transforms.Compose(
     ]
 ) # same as original simclr implementation as well as https://github.com/AndrewAtanov/simclr-pytorch and https://github.com/sthalles/SimCLR
 
+
+IMAGENET_MEAN = torch.tensor([0.485, 0.456, 0.406])
+IMAGENET_STD = torch.tensor([0.229, 0.224, 0.225])
+IMAGENET_INCEPTION_MEAN = torch.tensor([0.5, 0.5, 0.5])
+IMAGENET_INCEPTION_STD = torch.tensor([0.5, 0.5, 0.5])
+STANDARD_MEAN = torch.tensor([0., 0., 0.])
+STANDARD_STD = torch.tensor([1., 1., 1.])
+
 DATASET_PARAMS = {
+    'oxford-iiit-pets': {
+        'num_classes': 37,
+        'mean': STANDARD_MEAN,
+        'std': STANDARD_STD,
+        'transform_train': TRAIN_TRANSFORMS_IMAGENET,
+        'transform_test': TEST_TRANSFORMS_IMAGENET,
+        'loss': nn.CrossEntropyLoss(),
+        'epochs': 200,
+        'batch_size':256,
+        'weight_decay':1e-4,
+        'step_lr': 50,
+        'step_lr_gamma': 0.1,
+        'lr': 0.1,
+        'momentum': 0.9
+    },
+    'flowers': {
+        'num_classes': 102,
+        'mean': STANDARD_MEAN,
+        'std': STANDARD_STD,
+        'transform_train': TRAIN_TRANSFORMS_IMAGENET,
+        'transform_test': TEST_TRANSFORMS_IMAGENET,
+        'loss': nn.CrossEntropyLoss(),
+        'epochs': 200,
+        'batch_size':256,
+        'weight_decay':1e-4,
+        'step_lr': 50,
+        'step_lr_gamma': 0.1,
+        'lr': 0.1,
+        'momentum': 0.9
+    },
+    'imagenet21k': {
+        'num_classes': 21843,
+        'mean': IMAGENET_INCEPTION_MEAN,
+        'std': IMAGENET_INCEPTION_STD,
+        'transform_train': TRAIN_TRANSFORMS_IMAGENET,
+        'transform_test': TEST_TRANSFORMS_IMAGENET,
+        'loss': nn.CrossEntropyLoss(),
+        'epochs': 200,
+        'batch_size':256,
+        'weight_decay':1e-4,
+        'step_lr': 50,
+        'step_lr_gamma': 0.1,
+        'lr': 0.1,
+        'momentum': 0.9
+    },
     'imagenet': {
         'num_classes': 1000,
-        'input_size': 224, 
-        'mean': torch.tensor([0.485, 0.456, 0.406]), 
-        'std': torch.tensor([0.229, 0.224, 0.225]), 
+        'mean': IMAGENET_MEAN, 
+        'std': IMAGENET_STD, 
         'transform_train': TRAIN_TRANSFORMS_IMAGENET,
         'transform_test': TEST_TRANSFORMS_IMAGENET,
         'loss': nn.CrossEntropyLoss(), 
@@ -170,7 +235,6 @@ DATASET_PARAMS = {
     },
     'cifar10': {
         'num_classes': 10,
-        'input_size': 32, 
         'mean': torch.tensor([0.4914, 0.4822, 0.4465]),
         'std': torch.tensor([0.2023, 0.1994, 0.2010]), 
         'transform_train': TRAIN_TRANSFORMS_DEFAULT(32),
@@ -179,14 +243,13 @@ DATASET_PARAMS = {
         'epochs': 150,
         'batch_size': 128,
         'weight_decay':5e-4,
-        'step_lr': 50, 
+        'step_lr': 20, 
         'step_lr_gamma': 0.1, 
         'lr': 0.1, 
         'momentum': 0.9
     },
     'cifar100': {
         'num_classes': 100,
-        'input_size': 32, 
         'mean': torch.tensor([0.5071, 0.4865, 0.4409]),
         'std': torch.tensor([0.2673, 0.2564, 0.2762]),
         'transform_train': TRAIN_TRANSFORMS_DEFAULT(32),
@@ -195,14 +258,13 @@ DATASET_PARAMS = {
         'epochs': 150,
         'batch_size': 128,
         'weight_decay':5e-4,
-        'step_lr': 50, 
+        'step_lr': 20, 
         'step_lr_gamma': 0.1, 
         'lr': 0.1, 
         'momentum': 0.9
     },
     'stl10': {
         'num_classes': 10,
-        'input_size': 96, 
         'mean': torch.tensor([0.4467, 0.4398, 0.4066]),
         'std': torch.tensor([0.2603, 0.2566, 0.2713]),
         'transform_train': TRAIN_TRANSFORMS_DEFAULT(96),

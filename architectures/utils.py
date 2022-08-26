@@ -1,7 +1,21 @@
 from enum import Enum
+from re import S
 import torch as ch
 import pytorch_lightning as pl
+from torch.optim import SGD, Adam
 
+OPTIMIZERS = {
+    'sgd': SGD,
+    'adam': Adam
+}
+
+def _construct_opt_params(optimizer, lr, wd, momentum):
+    if optimizer == 'sgd':
+        return {'lr': lr, 'weight_decay': wd, 'momentum': momentum}
+    elif optimizer == 'adam':
+        return {'lr': lr, 'weight_decay': wd}
+    else:
+        raise ValueError(f'{optimizer} not supported!')
 
 class InputNormalize(pl.LightningModule):
     '''
