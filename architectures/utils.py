@@ -1,21 +1,9 @@
 from enum import Enum
 from re import S
 import torch as ch
+import torch.nn as nn
 import pytorch_lightning as pl
-from torch.optim import SGD, Adam
-
-OPTIMIZERS = {
-    'sgd': SGD,
-    'adam': Adam
-}
-
-def _construct_opt_params(optimizer, lr, wd, momentum):
-    if optimizer == 'sgd':
-        return {'lr': lr, 'weight_decay': wd, 'momentum': momentum}
-    elif optimizer == 'adam':
-        return {'lr': lr, 'weight_decay': wd}
-    else:
-        raise ValueError(f'{optimizer} not supported!')
+from torchvision.models.feature_extraction import get_graph_node_names
 
 class InputNormalize(pl.LightningModule):
     '''
@@ -34,6 +22,54 @@ class InputNormalize(pl.LightningModule):
         x = ch.clamp(x, 0, 1)
         x_normalized = (x - self.new_mean)/self.new_std
         return x_normalized
+
+
+class FlattenNormalizeConcatenate(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        self.flatten = nn.Flatten(1)
+        self.eps = 1e-10 # to make sure we don't divide by zero
+    
+    def forward(self, x):
+        ## x is a list of features
+        new_x = []
+        for ft in x:
+            flat_ft = self.flatten(ft)
+            new_x.append(flat_ft/(
+                ch.linalg.norm(flat_ft, ord=2, dim=0) + self.eps)
+                )
+        return ch.cat(new_x, dim=1)
+
+
+def intermediate_layer_names(model: nn.Module):
+    filtered_nodes = []
+    if model.__class__.__name__ == 'VGG':
+        filtered_nodes = [x['module'] for x in model.feature_info]+ ['pre_logits', 'head.global_pool']
+    elif model.__class__.__name__ == 'VisionTransformer':
+        _, node_names = get_graph_node_names(model)        
+        block_number_to_layer = {}
+        for n in node_names:
+            if n.startswith('blocks.'):
+                current_block = int(n.split('blocks.')[1].split('.')[0])
+                if current_block not in block_number_to_layer:
+                    block_number_to_layer[current_block] = [n]
+                else:
+                    block_number_to_layer[current_block].append(n)
+            if n in ['fc_norm']:
+                filtered_nodes.append(n)
+        for block in sorted(block_number_to_layer.keys(), reverse=True):
+            filtered_nodes = [block_number_to_layer[block][-1]] + filtered_nodes
+    elif model.__class__.__name__ == 'ResNetV2' or model.__class__.__name__ == 'ResNet':
+        _, node_names = get_graph_node_names(model)        
+        for idx, n in enumerate(node_names):
+            if n.endswith('.pool'):
+                filtered_nodes.append(n)
+            elif n.endswith('.add'):
+                if len(node_names) > idx + 1 and node_names[idx+1].endswith('.act3'):
+                    filtered_nodes.append(node_names[idx+1])
+                else:
+                    filtered_nodes.append(n)
+    return filtered_nodes
 
 def calc_est_grad(func, x, y, rad, num_samples):
     B, *_ = x.shape

@@ -6,7 +6,7 @@ from tqdm import tqdm
 from architectures import utils
 from .attack_steps import LinfStep, L2Step, \
     UnconstrainedStep, FourierStep, RandomStep
-from .losses import LPNormLossSingleModel
+from .losses import BaseLoss
 
 STEPS = {
     'inf': LinfStep,
@@ -114,7 +114,8 @@ class Attacker(ch.nn.Module):
         m = -1 if targeted else 1
 
         # Initialize step class and attacker criterion
-        criterion = ch.nn.CrossEntropyLoss(reduction='none')
+        criterion = ch.nn.CrossEntropyLoss(reduction='none') \
+            if custom_loss is None else custom_loss
         step_class = STEPS[constraint] if isinstance(constraint, str) else constraint
         step = step_class(eps=eps, orig_input=orig_input, step_size=step_size) 
 
@@ -126,8 +127,8 @@ class Attacker(ch.nn.Module):
             if should_normalize:
                 inp = self.normalize(inp)
             
-            if custom_loss:
-                return custom_loss(self.model, model2, inp, target, targ2), None
+            if isinstance(criterion, BaseLoss):
+                return criterion(self.model, model2, inp, target, targ2), None
             else:
                 output = self.model(inp)
                 return criterion(output, target), output

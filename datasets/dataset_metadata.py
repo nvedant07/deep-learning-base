@@ -186,7 +186,8 @@ DATASET_PARAMS = {
         'step_lr': 50,
         'step_lr_gamma': 0.1,
         'lr': 0.1,
-        'momentum': 0.9
+        'momentum': 0.9,
+        'warmup_steps': 100
     },
     'flowers': {
         'num_classes': 102,
@@ -201,7 +202,8 @@ DATASET_PARAMS = {
         'step_lr': 50,
         'step_lr_gamma': 0.1,
         'lr': 0.1,
-        'momentum': 0.9
+        'momentum': 0.9,
+        'warmup_steps': 100
     },
     'imagenet21k': {
         'num_classes': 21843,
@@ -216,7 +218,8 @@ DATASET_PARAMS = {
         'step_lr': 50,
         'step_lr_gamma': 0.1,
         'lr': 0.1,
-        'momentum': 0.9
+        'momentum': 0.9,
+        'warmup_steps': 100
     },
     'imagenet': {
         'num_classes': 1000,
@@ -231,7 +234,8 @@ DATASET_PARAMS = {
         'step_lr': 50, 
         'step_lr_gamma': 0.1, 
         'lr': 0.1, 
-        'momentum': 0.9
+        'momentum': 0.9,
+        'warmup_steps': 100
     },
     'cifar10': {
         'num_classes': 10,
@@ -246,7 +250,8 @@ DATASET_PARAMS = {
         'step_lr': 20, 
         'step_lr_gamma': 0.1, 
         'lr': 0.1, 
-        'momentum': 0.9
+        'momentum': 0.9,
+        'warmup_steps': 100
     },
     'cifar100': {
         'num_classes': 100,
@@ -261,7 +266,8 @@ DATASET_PARAMS = {
         'step_lr': 20, 
         'step_lr_gamma': 0.1, 
         'lr': 0.1, 
-        'momentum': 0.9
+        'momentum': 0.9,
+        'warmup_steps': 100
     },
     'stl10': {
         'num_classes': 10,
@@ -276,6 +282,7 @@ DATASET_PARAMS = {
         'step_lr': 50, 
         'step_lr_gamma': 0.1, 
         'lr': 0.1, 
-        'momentum': 0.9
+        'momentum': 0.9,
+        'warmup_steps': 100
     }
 }

@@ -6,6 +6,7 @@ from timm.models import layers
 from torchvision.models.feature_extraction import get_graph_node_names, create_feature_extractor
 from .cifar_models.custom_modules import FakeReLUM
 from timm.models.fx_features import GraphExtractNet
+from .utils import intermediate_layer_names
 
 
 def check_fake_and_no_relu(model, args, kwargs):
@@ -70,25 +71,7 @@ def inference_with_features(model: nn.Module,
 
             return pred, x_latent
     elif 'layer_num' in kwargs and kwargs['layer_num'] is not None:
-        _, node_names = get_graph_node_names(model)        
-        filtered_nodes = []
-        if model.__class__.__name__ == 'VisionTransformer':
-            block_number_to_layer = {}
-            for n in node_names:
-                if n.startswith('blocks.'):
-                    current_block = int(n.split('blocks.')[1].split('.')[0])
-                    if current_block not in block_number_to_layer:
-                        block_number_to_layer[current_block] = [n]
-                    else:
-                        block_number_to_layer[current_block].append(n)
-                if n in ['fc_norm']:
-                    filtered_nodes.append(n)
-            for block in sorted(block_number_to_layer.keys(), reverse=True):
-                filtered_nodes = [block_number_to_layer[block][-1]] + filtered_nodes
-        elif model.__class__.__name__ == 'ResNetV2':
-            for n in node_names:
-                if n.endswith('.pool') or n.endswith('.add'):
-                    filtered_nodes.append(n)
+        filtered_nodes = intermediate_layer_names(model)
         feature_model = GraphExtractNet(model, filtered_nodes)
         all_fts = feature_model(X)
         latent = all_fts[kwargs['layer_num']]

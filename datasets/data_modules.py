@@ -46,11 +46,12 @@ class BaseDataModule(pl.LightningDataModule):
         self.subset = subset
         self.subset_type = subset_type
 
-    def train_dataloader(self):
+    def train_dataloader(self, shuffle=None):
         if not hasattr(self, 'train_ds'):
             self.setup()
         return DataLoader(self.train_ds, batch_size=self.batch_size, 
-            batch_sampler=self.batch_sampler, shuffle=self.shuffle_train, 
+            batch_sampler=self.batch_sampler, 
+            shuffle=self.shuffle_train if shuffle is None else shuffle, 
             num_workers=self.workers, pin_memory=self.pin_memory)
 
     def val_dataloader(self):
@@ -114,6 +115,7 @@ class CIFAR10DataModule(BaseDataModule):
         if stage in (None, 'test'):
             self.test_ds = self.dataset_class(root=self.data_dir, train=False, transform=self.transform_test, **self.dataset_kwargs)
 
+
 class CIFAR100DataModule(BaseDataModule):
     def __init__(self, dataset_class=datasets.CIFAR100, *args, **kwargs):
         super(CIFAR100DataModule, self).__init__(dataset_class, *args, **kwargs)
@@ -143,6 +145,7 @@ class CIFAR100DataModule(BaseDataModule):
                 self.subset_train_ds()
         if stage in (None, 'test'):
             self.test_ds = self.dataset_class(root=self.data_dir, train=False, transform=self.transform_test, **self.dataset_kwargs)
+
 
 class STL10DataModule(BaseDataModule):
     def __init__(self, dataset_class=datasets.STL10, *args, **kwargs):
@@ -187,7 +190,7 @@ class ImageNetDataModule(BaseDataModule):
             self.batch_size = DATASET_PARAMS['imagenet']['batch_size']
         
         self.init_remaining_attrs('imagenet')
-    
+
     def prepare_data(self):
         # ImageNet needs to be pre-downloaded; this step will unzip the directory
         self.dataset_class(root=self.data_dir, split='train')

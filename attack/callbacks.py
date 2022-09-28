@@ -163,4 +163,3 @@ class AdvCallback(Callback):
     def on_predict_epoch_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
         self.on_test_epoch_start(trainer, pl_module)
     
-    

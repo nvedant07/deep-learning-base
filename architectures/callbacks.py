@@ -5,7 +5,8 @@ import torch
 from torch.optim import SGD, lr_scheduler, Adam
 import torchmetrics
 from typing import Dict, Optional, Callable, Union
-from .utils import InputNormalize, OPTIMIZERS, _construct_opt_params
+from .utils import InputNormalize
+from training.utils import OPTIMIZERS, _construct_opt_params
 from datasets import dataset_metadata as ds
 from attack.attack_module import Attacker
 from architectures.utils import AverageMeter
@@ -32,7 +33,9 @@ class LightningWrapper(LightningModule):
                  step_lr_gamma: Optional[float] = None, 
                  dataset_name: Optional[str] = None,
                  inference_kwargs: Dict = {},
-                 optimizer: Optional[str] = 'sgd'):
+                 optimizer: Optional[str] = 'sgd',
+                 warmup_steps: Optional[int] = None,
+                 total_steps: Optional[int] = None):
         """
         inference_kwargs are passed onto the ``inference_with_features``
         function in architectures.inference
@@ -58,12 +61,19 @@ class LightningWrapper(LightningModule):
             if lr is None else lr
         self.momentum = ds.DATASET_PARAMS[dataset_name]['momentum'] \
             if momentum is None else momentum
+        ## note that step_lr and step_lr_gamma assume scheduler.step() is called after every epoch
         self.step_lr = ds.DATASET_PARAMS[dataset_name]['step_lr'] \
             if step_lr is None else step_lr
         self.step_lr_gamma = ds.DATASET_PARAMS[dataset_name]['step_lr_gamma'] \
             if step_lr_gamma is None else step_lr_gamma
+        
         self.weight_decay = ds.DATASET_PARAMS[dataset_name]['weight_decay'] \
             if weight_decay is None else weight_decay
+        ## this is used for get_cosine_schedule_with_warmup in training.utils and assumes scheduler.step()
+        ## is called every step 
+        self.warmup_steps = ds.DATASET_PARAMS[dataset_name]['warmup_steps'] \
+            if warmup_steps is None else warmup_steps
+        self.total_steps = total_steps
         self.inference_kwargs = inference_kwargs
         self.optimizer = optimizer
 
@@ -71,11 +81,25 @@ class LightningWrapper(LightningModule):
         return inference_with_features(self.model, 
                                        self.normalizer(x), 
                                        *args, **kwargs)
+    
+    def _has_latent(self):
+        if 'with_latent' in self.inference_kwargs and self.inference_kwargs['with_latent']:
+            return True
+        if 'layer_num' in self.inference_kwargs and self.inference_kwargs['layer_num'] is not None:
+            return True
+        return False
+    
+    def _return_x(self):
+        return 'with_x' in self.inference_kwargs and self.inference_kwargs['with_x']
 
     def predict_step(self, batch, batch_idx, dataloader_idx: Optional[int] = None):
         x, y = batch
-        out, latent = self(x, **self.inference_kwargs) ## not safe; TODO: add checks
-        out, latent = out.detach(), latent.detach()
+        out = self(x, **self.inference_kwargs) ## not safe; TODO: add checks
+        if self._has_latent():
+            out, latent = out
+            out, latent = out.detach(), latent.detach()
+        else:
+            out = out.detach()
 
         if torch.distributed.is_available() and torch.distributed.is_initialized():
             all_y = self.all_gather(y)
@@ -84,21 +108,37 @@ class LightningWrapper(LightningModule):
             all_x = torch.cat([all_x[i] for i in range(len(all_x))])
             all_out = self.all_gather(out)
             all_out = torch.cat([all_out[i] for i in range(len(all_out))])
-            all_latent = self.all_gather(latent)
-            all_latent = torch.cat([all_latent[i] for i in range(len(all_latent))])
-            return all_out, all_latent, all_y
+            if self._has_latent():
+                all_latent = self.all_gather(latent)
+                all_latent = torch.cat([all_latent[i] for i in range(len(all_latent))])
+                op_tup = [all_out, all_latent, all_y]
+            else:
+                op_tup = [all_out, all_y]
+            return op_tup + [all_x] if self._return_x() else op_tup
 
-        return out, latent, y
+        op_tup = [out, latent, y] if self._has_latent() else [out, y]
+        return op_tup + [x] if self._return_x() else op_tup
 
     def on_predict_epoch_end(self, results):
         for i in range(len(results)):
-            cat_out, cat_latent, cat_y = None, None, None
+            cat_x, cat_out, cat_latent, cat_y = None, None, None, None
             for batch_res in results[i]:
-                out, latent, y = batch_res
+                if self._has_latent() and self._return_x():
+                    out, latent, y, x = batch_res
+                elif self._has_latent():
+                    out, latent, y = batch_res
+                elif self._return_x():
+                    out, y, x = batch_res
+                else:
+                    out, y = batch_res
                 cat_out = out if cat_out is None else torch.cat((cat_out, out))
-                cat_latent = latent if cat_latent is None else torch.cat((cat_latent, latent))
                 cat_y = y if cat_y is None else torch.cat((cat_y, y))
-            results[i] = (cat_out, cat_latent, cat_y)
+                if self._has_latent():
+                    cat_latent = latent if cat_latent is None else torch.cat((cat_latent, latent))
+                if self._return_x():
+                    cat_x = x if cat_x is None else torch.cat((cat_x, x))
+            result_op = [cat_out, cat_latent, cat_y] if self._has_latent() else [cat_out, cat_y]
+            results[i] = result_op + [cat_x] if self._return_x() else result_op
         return results
 
     def step(self, batch, batch_idx):
@@ -189,44 +229,55 @@ class AdvAttackWrapper(LightningWrapper):
         kwargs will be sent to attacker
         args will be sent to the forward function of the model
         """
+        clean_pred = inference_with_features(
+            self.model, self.normalizer(x), *args, **kwargs
+            )
         if adv:
             x, _ = self.attacker(x, targ, **self.attack_kwargs)
             if return_adv:
                 return (x, 
+                        clean_pred,
                         inference_with_features(
                             self.model, self.normalizer(x), *args, **kwargs
                             )
                         )
-        return inference_with_features(self.model, self.normalizer(x), *args, **kwargs)
+        return clean_pred, inference_with_features(self.model, self.normalizer(x), *args, **kwargs)
 
     def predict_step(self, batch, batch_idx, dataloader_idx: Optional[int] = None):
         x, y = batch
-        adv_x, pred_adv_x = self(x, y, adv=True, return_adv=self.return_adv_samples, 
+        adv_x, pred_clean_x, pred_adv_x = self(x, y, adv=True, return_adv=self.return_adv_samples, 
                                 **self.inference_kwargs)
-        adv_x, pred_adv_x = adv_x.detach(), pred_adv_x.detach()
+        adv_x, pred_clean_x, pred_adv_x = adv_x.detach(), pred_clean_x.detach(), pred_adv_x.detach()
 
         if torch.distributed.is_available() and torch.distributed.is_initialized():
             all_x = self.all_gather(x)
             all_x = torch.cat([all_x[i] for i in range(len(all_x))])
+            all_y = self.all_gather(y)
+            all_y = torch.cat([all_y[i] for i in range(len(all_y))])
             all_adv_x = self.all_gather(adv_x)
             all_adv_x = torch.cat([all_adv_x[i] for i in range(len(all_adv_x))])
             all_pred_adv_x = self.all_gather(pred_adv_x)
             all_pred_adv_x = torch.cat([all_pred_adv_x[i] for i in range(len(all_pred_adv_x))])
+            all_pred_clean_x = self.all_gather(pred_clean_x)
+            all_pred_clean_x = torch.cat([all_pred_clean_x[i] for i in range(len(all_pred_clean_x))])
             
-            return all_x, (all_adv_x, all_pred_adv_x)
+            return (all_x, all_pred_clean_x), (all_adv_x, all_pred_adv_x), all_y
 
-        return x, (adv_x, pred_adv_x)
+        return (x, pred_clean_x), (adv_x, pred_adv_x), y
     
     def on_predict_epoch_end(self, results):
         for i in range(len(results)):
-            cat_x, cat_xadv, cat_pred_xadv = None, None, None
+            cat_x, cat_y, cat_xadv, cat_pred_x, cat_pred_xadv = None, None, None, None, None
             for batch_res in results[i]:
-                x, (x_adv, pred_x_adv) = batch_res
+                (x, pred_x), (x_adv, pred_x_adv), y = batch_res
                 cat_x = x if cat_x is None else torch.cat((cat_x, x))
+                cat_y = y if cat_y is None else torch.cat((cat_y, y))
                 cat_xadv = x_adv if cat_xadv is None else torch.cat((cat_xadv, x_adv))
                 cat_pred_xadv = pred_x_adv if cat_pred_xadv is None else \
                     torch.cat((cat_pred_xadv, pred_x_adv))
-            results[i] = (cat_x, (cat_xadv, cat_pred_xadv))
+                cat_pred_x = pred_x if cat_pred_x is None else \
+                    torch.cat((cat_pred_x, pred_x))
+            results[i] = ((cat_x, cat_pred_x), (cat_xadv, cat_pred_xadv), cat_y)
         return results
 
     def step(self, batch, batch_idx):
