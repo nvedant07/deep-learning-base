@@ -10,7 +10,7 @@ import timm.models as models
 from . import timm_addons
 from . import cifar_models
 ### all paths are added in __init__.py of the top level dir which allows for the following import
-from datasets import dataset_metadata as ds
+import dataset_metadata as ds
 
 _logger = logging.getLogger(__name__)
 

@@ -4,7 +4,7 @@ from torch.utils.data import random_split, DataLoader, Dataset, Sampler, Subset
 import pytorch_lightning as pl
 from pytorch_lightning import utilities as pl_utils
 from typing import Dict, Iterable, Optional, Sequence, Union, Callable
-from .dataset_metadata import DATASET_PARAMS
+from dataset_metadata import DATASET_PARAMS
 import numpy as np
 
 

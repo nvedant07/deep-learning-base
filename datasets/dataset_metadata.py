@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 from torchvision import transforms
 
-from .gaussian_blur import GaussianBlur
+import gaussian_blur as gb
 
 ## Default Data Augs taken from: 
 # https://github.com/MadryLab/robustness/blob/master/robustness/data_augmentation.py
@@ -151,7 +151,7 @@ SIMCLR_TRAIN_TRANSFORMS = lambda size, s=1: transforms.Compose(
                                     saturation=0.8*s, hue=0.2*s)], p=0.8),
         transforms.RandomGrayscale(p=0.2),
         transforms.ToTensor(),
-        GaussianBlur(size//2, 0.5)
+        gb.GaussianBlur(size//2, 0.5)
     ]
 ) # same as original simclr implementation as well as https://github.com/AndrewAtanov/simclr-pytorch and https://github.com/sthalles/SimCLR
 
@@ -160,7 +160,7 @@ SIMCLR_TRAIN_TRANSFORMS_NOCOLOR = lambda size, s=1: transforms.Compose(
         transforms.RandomResizedCrop(size=size),
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
-        GaussianBlur(size//2, 0.5)
+        gb.GaussianBlur(size//2, 0.5)
     ]
 ) # same as original simclr implementation as well as https://github.com/AndrewAtanov/simclr-pytorch and https://github.com/sthalles/SimCLR
 

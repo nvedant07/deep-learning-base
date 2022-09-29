@@ -7,7 +7,7 @@ import torchmetrics
 from typing import Dict, Optional, Callable, Union
 from .utils import InputNormalize
 from training.utils import OPTIMIZERS, _construct_opt_params
-from datasets import dataset_metadata as ds
+import dataset_metadata as ds
 from attack.attack_module import Attacker
 from architectures.utils import AverageMeter
 from architectures.inference import inference_with_features

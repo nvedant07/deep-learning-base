@@ -6,6 +6,7 @@ import torch as ch
 import torch.nn as nn
 import torch.nn.functional as F
 import timm.models as models
+## TODO: do something about this import
 import sys
 sys.path.append('../training')
 from partial_inference_layer import PartialLinear
