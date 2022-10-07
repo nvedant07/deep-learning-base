@@ -9,6 +9,7 @@ import timm
 import timm.models as models
 from . import timm_addons
 from . import cifar_models
+import clip
 ### all paths are added in __init__.py of the top level dir which allows for the following import
 import dataset_metadata as ds
 
@@ -109,6 +110,10 @@ def create_model(model_name: str,
         assert model_name in cifar_models.model_names, f'{model_name} not available for {dataset_name}'
         model = cifar_models.create_model_fn(model_name)(num_classes=num_classes)
         loading_function(model, pretrained, checkpoint_path, **loading_function_kwargs)
+    if 'clip' in dataset_name:
+        assert pretrained and checkpoint_path, f'For CLIP models, pretrained must be True along with a checkpoint_path to a CLIP model'
+        ## make sure checkpoints are saved as needed by CLIP (https://github.com/openai/CLIP/blob/main/clip/clip.py)
+        model = clip.load(checkpoint_path)[0].visual ## only take the visual component
     else:
         # Use timm for ImageNet and other big dataset models 
         should_custom_load = pretrained and checkpoint_path != ''

@@ -165,14 +165,37 @@ SIMCLR_TRAIN_TRANSFORMS_NOCOLOR = lambda size, s=1: transforms.Compose(
 ) # same as original simclr implementation as well as https://github.com/AndrewAtanov/simclr-pytorch and https://github.com/sthalles/SimCLR
 
 
+## CLIP transforms; taken from OpenAI's implementation
+## https://github.com/openai/CLIP/blob/main/clip/clip.py
+def _convert_image_to_rgb(image):
+    return image.convert("RGB")
+CLIP_INFERENCE_TRANSFORMS = lambda size: transforms.Compose(
+    [
+        transforms.Resize(size, interpolation=transforms.InterpolationMode.BICUBIC),
+        transforms.CenterCrop(size),
+        _convert_image_to_rgb,
+        transforms.ToTensor()
+    ]## without normalization since that is implemented by the model's forward pass
+)
+
+
 IMAGENET_MEAN = torch.tensor([0.485, 0.456, 0.406])
 IMAGENET_STD = torch.tensor([0.229, 0.224, 0.225])
 IMAGENET_INCEPTION_MEAN = torch.tensor([0.5, 0.5, 0.5])
 IMAGENET_INCEPTION_STD = torch.tensor([0.5, 0.5, 0.5])
+CLIP_MODELS_MEAN = torch.tensor([0.48145466, 0.4578275, 0.40821073])
+CLIP_MODELS_STD = torch.tensor([0.26862954, 0.26130258, 0.27577711])
 STANDARD_MEAN = torch.tensor([0., 0., 0.])
 STANDARD_STD = torch.tensor([1., 1., 1.])
 
 DATASET_PARAMS = {
+    'clip': {
+        ## num classes is not needed -- OpenAI CLIP models have no head
+        'mean': CLIP_MODELS_MEAN,
+        'std': CLIP_MODELS_STD,
+        'transform_train': CLIP_INFERENCE_TRANSFORMS,
+        'transform_test': CLIP_INFERENCE_TRANSFORMS
+    },
     'oxford-iiit-pets': {
         'num_classes': 37,
         'mean': STANDARD_MEAN,
