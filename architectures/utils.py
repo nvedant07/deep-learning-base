@@ -4,6 +4,7 @@ import torch as ch
 import torch.nn as nn
 import pytorch_lightning as pl
 from torchvision.models.feature_extraction import get_graph_node_names
+import warnings
 
 class InputNormalize(pl.LightningModule):
     '''
@@ -41,12 +42,31 @@ class FlattenNormalizeConcatenate(nn.Module):
         return ch.cat(new_x, dim=1)
 
 
-def intermediate_layer_names(model: nn.Module):
+def unroll_dataparallel(model: nn.Module):
+    if isinstance(model, nn.DataParallel):
+        return model.module, {'device_ids': model.device_ids, 
+                              'output_device': model.output_device,
+                              'dim': model.dim}
+    else:
+        return model, {}
+
+def reroll_dataparallel(model: nn.Module, kwargs: dict):
+    if len(kwargs) > 0:
+        return nn.DataParallel(model, **kwargs)
+    return model
+
+def intermediate_layer_names(model: nn.Module, return_all = False):
+    if isinstance(model, nn.DataParallel):
+        model_to_extract = model.module
+        warnings.warn('Caught a DataParallel model in intermediate_layer_names; '
+                      'will be unpacked to get node names')
+    else:
+        model_to_extract = model
     filtered_nodes = []
-    if model.__class__.__name__ == 'VGG':
-        filtered_nodes = [x['module'] for x in model.feature_info]+ ['pre_logits', 'head.global_pool']
-    elif model.__class__.__name__ == 'VisionTransformer':
-        _, node_names = get_graph_node_names(model)        
+    if model_to_extract.__class__.__name__ == 'VGG':
+        filtered_nodes = [x['module'] for x in model_to_extract.feature_info]+ ['pre_logits', 'head.global_pool']
+    elif model_to_extract.__class__.__name__ == 'VisionTransformer':
+        _, node_names = get_graph_node_names(model_to_extract)        
         block_number_to_layer = {}
         for n in node_names:
             if n.startswith('blocks.'):
@@ -59,8 +79,8 @@ def intermediate_layer_names(model: nn.Module):
                 filtered_nodes.append(n)
         for block in sorted(block_number_to_layer.keys(), reverse=True):
             filtered_nodes = [block_number_to_layer[block][-1]] + filtered_nodes
-    elif model.__class__.__name__ == 'ResNetV2' or model.__class__.__name__ == 'ResNet':
-        _, node_names = get_graph_node_names(model)        
+    elif model_to_extract.__class__.__name__ == 'ResNetV2' or model_to_extract.__class__.__name__ == 'ResNet':
+        _, node_names = get_graph_node_names(model_to_extract)
         for idx, n in enumerate(node_names):
             if n.endswith('.pool'):
                 filtered_nodes.append(n)
@@ -69,7 +89,22 @@ def intermediate_layer_names(model: nn.Module):
                     filtered_nodes.append(node_names[idx+1])
                 else:
                     filtered_nodes.append(n)
-    return filtered_nodes
+    elif hasattr(model_to_extract, 'backbone') and model_to_extract.backbone.__class__.__name__ == 'ModifiedResNet':
+        _, node_names = get_graph_node_names(model_to_extract)
+        for idx, n in enumerate(node_names):
+            if n.endswith('attnpool.squeeze'):
+                filtered_nodes.append(n)
+            elif n.endswith('.add'):
+                if len(node_names) > idx + 1 and node_names[idx+1].endswith('.relu3'):
+                    filtered_nodes.append(node_names[idx+1])
+                else:
+                    filtered_nodes.append(n)
+
+    if return_all:
+        return filtered_nodes, node_names
+    else:
+        return filtered_nodes
+
 
 def calc_est_grad(func, x, y, rad, num_samples):
     B, *_ = x.shape

@@ -15,6 +15,11 @@ import dataset_metadata as ds
 
 _logger = logging.getLogger(__name__)
 
+CLIP_MODEL_PATHS = {
+    'vit_base_patch32_224': '/NS/robustness_2/work/vnanda/invariances_in_reps/deep-learning-base/checkpoints/clip/ViT-B-32.pt',
+    'resnet50': '/NS/robustness_2/work/vnanda/invariances_in_reps/deep-learning-base/checkpoints/clip/RN50.pt'
+}
+
 def list_models(dataset_name):
     if 'cifar' in dataset_name:
         return cifar_models.model_names
@@ -102,7 +107,7 @@ def create_model(model_name: str,
             from a user-defined checkpoint file. Must take 3 args: model, pretrained, checkpoint_path
     """
     pl_utils.seed.seed_everything(seed)
-    
+
     if dataset_name not in ds.DATASET_PARAMS:    dataset_name = 'imagenet'
     if num_classes is None:    num_classes = ds.DATASET_PARAMS[dataset_name]['num_classes']
 
@@ -110,10 +115,18 @@ def create_model(model_name: str,
         assert model_name in cifar_models.model_names, f'{model_name} not available for {dataset_name}'
         model = cifar_models.create_model_fn(model_name)(num_classes=num_classes)
         loading_function(model, pretrained, checkpoint_path, **loading_function_kwargs)
-    if 'clip' in dataset_name:
+    elif 'clip' in dataset_name:
         assert pretrained and checkpoint_path, f'For CLIP models, pretrained must be True along with a checkpoint_path to a CLIP model'
         ## make sure checkpoints are saved as needed by CLIP (https://github.com/openai/CLIP/blob/main/clip/clip.py)
-        model = clip.load(checkpoint_path)[0].visual ## only take the visual component
+        model = clip.load(CLIP_MODEL_PATHS[model_name], device='cpu')[0].visual ## only take the visual component
+        ## add a placeholder fc layer to be replaced later
+        # in_fts = list(model.named_parameters())[-1][1].shape[-1]
+        in_fts = model(torch.rand((1,3,224,224))).shape[1]
+        model = nn.Sequential(OrderedDict(
+            [('backbone', list(model.named_modules())[0][1]), ('fc', nn.Linear(in_fts, num_classes))]))
+        if checkpoint_path.split('/')[-1] != CLIP_MODEL_PATHS[model_name].split('/')[-1]:
+            print ('Loading finetuned CLIP weights')
+            loading_function(model, pretrained, checkpoint_path, **loading_function_kwargs)
     else:
         # Use timm for ImageNet and other big dataset models 
         should_custom_load = pretrained and checkpoint_path != ''

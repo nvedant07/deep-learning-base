@@ -35,7 +35,8 @@ class LightningWrapper(LightningModule):
                  inference_kwargs: Dict = {},
                  optimizer: Optional[str] = 'sgd',
                  warmup_steps: Optional[int] = None,
-                 total_steps: Optional[int] = None):
+                 total_steps: Optional[int] = None,
+                 training_params_dataset: Optional[str] = None):
         """
         inference_kwargs are passed onto the ``inference_with_features``
         function in architectures.inference
@@ -48,30 +49,34 @@ class LightningWrapper(LightningModule):
         self.accuracy5_meter = AverageMeter('Acc@5')
         self.loss_meter = AverageMeter('Loss')
 
-        assert dataset_name or (mean and std), \
+        assert dataset_name or (mean is not None and std is not None), \
             'Both dataset_name and (mean, std) cannot be None'
         if mean is None:
             mean = ds.DATASET_PARAMS[dataset_name]['mean']
         if std is None:
             std = ds.DATASET_PARAMS[dataset_name]['std']
         self.normalizer = InputNormalize(mean, std)
-        self.loss = ds.DATASET_PARAMS[dataset_name]['loss'] \
+        
+        ####### training_params ######
+        training_params_dataset = dataset_name if training_params_dataset is None \
+            else training_params_dataset
+        self.loss = ds.DATASET_PARAMS[training_params_dataset]['loss'] \
             if loss is None else loss
-        self.lr = ds.DATASET_PARAMS[dataset_name]['lr'] \
+        self.lr = ds.DATASET_PARAMS[training_params_dataset]['lr'] \
             if lr is None else lr
-        self.momentum = ds.DATASET_PARAMS[dataset_name]['momentum'] \
+        self.momentum = ds.DATASET_PARAMS[training_params_dataset]['momentum'] \
             if momentum is None else momentum
         ## note that step_lr and step_lr_gamma assume scheduler.step() is called after every epoch
-        self.step_lr = ds.DATASET_PARAMS[dataset_name]['step_lr'] \
+        self.step_lr = ds.DATASET_PARAMS[training_params_dataset]['step_lr'] \
             if step_lr is None else step_lr
-        self.step_lr_gamma = ds.DATASET_PARAMS[dataset_name]['step_lr_gamma'] \
+        self.step_lr_gamma = ds.DATASET_PARAMS[training_params_dataset]['step_lr_gamma'] \
             if step_lr_gamma is None else step_lr_gamma
-        
-        self.weight_decay = ds.DATASET_PARAMS[dataset_name]['weight_decay'] \
+
+        self.weight_decay = ds.DATASET_PARAMS[training_params_dataset]['weight_decay'] \
             if weight_decay is None else weight_decay
-        ## this is used for get_cosine_schedule_with_warmup in training.utils and assumes scheduler.step()
-        ## is called every step 
-        self.warmup_steps = ds.DATASET_PARAMS[dataset_name]['warmup_steps'] \
+        ## this is used for get_cosine_schedule_with_warmup in training.utils and 
+        ## assumes scheduler.step() is called every step 
+        self.warmup_steps = ds.DATASET_PARAMS[training_params_dataset]['warmup_steps'] \
             if warmup_steps is None else warmup_steps
         self.total_steps = total_steps
         self.inference_kwargs = inference_kwargs
@@ -81,14 +86,14 @@ class LightningWrapper(LightningModule):
         return inference_with_features(self.model, 
                                        self.normalizer(x), 
                                        *args, **kwargs)
-    
+
     def _has_latent(self):
         if 'with_latent' in self.inference_kwargs and self.inference_kwargs['with_latent']:
             return True
         if 'layer_num' in self.inference_kwargs and self.inference_kwargs['layer_num'] is not None:
             return True
         return False
-    
+
     def _return_x(self):
         return 'with_x' in self.inference_kwargs and self.inference_kwargs['with_x']
 
