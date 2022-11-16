@@ -9,6 +9,7 @@ import timm
 import timm.models as models
 from . import timm_addons
 from . import cifar_models
+from . import utils
 import clip
 ### all paths are added in __init__.py of the top level dir which allows for the following import
 import dataset_metadata as ds
@@ -90,6 +91,19 @@ def load_pretrained_weights(model, pretrained, checkpoint_path, **kwargs):
         assert checkpoint_path, 'Must pass checkpoint_path for pretrained CIFAR models'
         load_checkpoint(model, checkpoint_path, **kwargs) # from timm
 
+def make_symbolic(model: nn.Module):
+    if model.__class__.__name__ == 'VisionTransformer':
+        new_model = utils.SymbolicClipVisionTransformer(
+            input_resolution = model.input_resolution,
+            patch_size=model.conv1.weight.shape[-1],
+            width=model.conv1.weight.shape[0],
+            layers=model.transformer.layers, 
+            heads=model.conv1.weight.shape[0] * 32 // 64, 
+            output_dim=model.proj.shape[-1]
+        )
+        new_model.load_state_dict(model.state_dict())
+        return new_model
+    return model
 
 def create_model(model_name: str, 
                 dataset_name: str, 
@@ -119,6 +133,8 @@ def create_model(model_name: str,
         assert pretrained and checkpoint_path, f'For CLIP models, pretrained must be True along with a checkpoint_path to a CLIP model'
         ## make sure checkpoints are saved as needed by CLIP (https://github.com/openai/CLIP/blob/main/clip/clip.py)
         model = clip.load(CLIP_MODEL_PATHS[model_name], device='cpu')[0].visual ## only take the visual component
+        ## CLIP VIT models are not symbolically traceable; wrap
+        model = make_symbolic(model)
         ## add a placeholder fc layer to be replaced later
         # in_fts = list(model.named_parameters())[-1][1].shape[-1]
         in_fts = model(torch.rand((1,3,224,224))).shape[1]

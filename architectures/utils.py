@@ -5,6 +5,34 @@ import torch.nn as nn
 import pytorch_lightning as pl
 from torchvision.models.feature_extraction import get_graph_node_names
 import warnings
+from clip.model import VisionTransformer
+
+class SymbolicClipVisionTransformer(VisionTransformer):
+    """
+    Allows symbolic tracing of CLIP ViTs
+    """
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def forward(self, x):
+        x = self.conv1(x)  # shape = [*, width, grid, grid]
+        x = x.reshape(x.shape[0], x.shape[1], -1)  # shape = [*, width, grid ** 2]
+        x = x.permute(0, 2, 1)  # shape = [*, grid ** 2, width]
+        x = ch.cat([self.class_embedding.to(x.dtype) + x.new_zeros((x.shape[0], 1, x.shape[-1]), device=x.device), x], dim=1)  # shape = [*, grid ** 2 + 1, width]
+        x = x + self.positional_embedding.to(x.dtype)
+        x = self.ln_pre(x)
+
+        x = x.permute(1, 0, 2)  # NLD -> LND
+        x = self.transformer(x)
+        x = x.permute(1, 0, 2)  # LND -> NLD
+
+        x = self.ln_post(x[:, 0, :])
+
+        if self.proj is not None:
+            x = x @ self.proj
+
+        return x
+
 
 class InputNormalize(pl.LightningModule):
     '''
@@ -55,6 +83,12 @@ def reroll_dataparallel(model: nn.Module, kwargs: dict):
         return nn.DataParallel(model, **kwargs)
     return model
 
+def permute_latent(model, latent, layername):
+    if hasattr(model, 'backbone') and isinstance(model.backbone, SymbolicClipVisionTransformer):
+        if layername.startswith('backbone.transformer.resblocks.'):
+            return latent.permute(1, 0, 2)
+    return latent
+
 def intermediate_layer_names(model: nn.Module, return_all = False):
     if isinstance(model, nn.DataParallel):
         model_to_extract = model.module
@@ -99,6 +133,20 @@ def intermediate_layer_names(model: nn.Module, return_all = False):
                     filtered_nodes.append(node_names[idx+1])
                 else:
                     filtered_nodes.append(n)
+    elif hasattr(model_to_extract, 'backbone') and isinstance(model_to_extract.backbone, VisionTransformer):
+        _, node_names = get_graph_node_names(model_to_extract)
+        block_number_to_layer = {}
+        for n in node_names:
+            if n.startswith('backbone.transformer.resblocks.'):
+                current_block = int(n.split('backbone.transformer.resblocks.')[1].split('.')[0])
+                if current_block not in block_number_to_layer:
+                    block_number_to_layer[current_block] = [n]
+                else:
+                    block_number_to_layer[current_block].append(n)
+            if n in ['backbone.matmul']:
+                filtered_nodes.append(n)
+        for block in sorted(block_number_to_layer.keys(), reverse=True):
+            filtered_nodes = [block_number_to_layer[block][-1]] + filtered_nodes
 
     if return_all:
         return filtered_nodes, node_names

@@ -191,6 +191,7 @@ STANDARD_STD = torch.tensor([1., 1., 1.])
 DATASET_PARAMS = {
     'clip': {
         ## num classes is not needed -- OpenAI CLIP models have no head
+        'num_classes': 0,
         'mean': CLIP_MODELS_MEAN,
         'std': CLIP_MODELS_STD,
         'transform_train': CLIP_INFERENCE_TRANSFORMS,
@@ -244,6 +245,22 @@ DATASET_PARAMS = {
         'momentum': 0.9,
         'warmup_steps': 100
     },
+    'imagenet21k-miil': {
+        'num_classes': 11221,
+        'mean': STANDARD_MEAN,
+        'std': STANDARD_STD,
+        'transform_train': TRAIN_TRANSFORMS_IMAGENET,
+        'transform_test': TEST_TRANSFORMS_IMAGENET,
+        'loss': nn.CrossEntropyLoss(),
+        'epochs': 200,
+        'batch_size':256,
+        'weight_decay':1e-4,
+        'step_lr': 50,
+        'step_lr_gamma': 0.1,
+        'lr': 0.1,
+        'momentum': 0.9,
+        'warmup_steps': 100
+    },
     'imagenet': {
         'num_classes': 1000,
         'mean': IMAGENET_MEAN, 
@@ -268,7 +285,7 @@ DATASET_PARAMS = {
         'transform_test': TEST_TRANSFORMS_DEFAULT(32),
         'loss': nn.CrossEntropyLoss(), 
         'epochs': 150,
-        'batch_size': 128,
+        'batch_size': 256,
         'weight_decay':5e-4,
         'step_lr': 20, 
         'step_lr_gamma': 0.1, 
@@ -284,7 +301,7 @@ DATASET_PARAMS = {
         'transform_test': TEST_TRANSFORMS_DEFAULT(32),
         'loss': nn.CrossEntropyLoss(), 
         'epochs': 150,
-        'batch_size': 128,
+        'batch_size': 256,
         'weight_decay':5e-4,
         'step_lr': 20, 
         'step_lr_gamma': 0.1, 
@@ -300,7 +317,7 @@ DATASET_PARAMS = {
         'transform_test': TEST_TRANSFORMS_DEFAULT(96),
         'loss': nn.CrossEntropyLoss(), 
         'epochs': 150,
-        'batch_size': 128,
+        'batch_size': 256,
         'weight_decay':5e-4,
         'step_lr': 50, 
         'step_lr_gamma': 0.1, 

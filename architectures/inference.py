@@ -6,7 +6,7 @@ from timm.models import layers
 from torchvision.models.feature_extraction import get_graph_node_names, create_feature_extractor
 from .cifar_models.custom_modules import FakeReLUM
 from timm.models.fx_features import GraphExtractNet
-from .utils import intermediate_layer_names, unroll_dataparallel, reroll_dataparallel
+from .utils import intermediate_layer_names, unroll_dataparallel, reroll_dataparallel, permute_latent
 
 
 def check_fake_and_no_relu(model, args, kwargs):
@@ -98,6 +98,7 @@ def inference_with_features(model: nn.Module,
         feature_model = reroll_dataparallel(feature_model, metadata)
         all_fts = feature_model(X)
         latent = all_fts[kwargs['layer_num']]
+        latent = permute_latent(model, latent, filtered_nodes[kwargs['layer_num']]) ## necessary for clip models
         if len(latent.shape) > 2:
             latent = latent.flatten(1)
         return get_prediction_from_latent(model, X, all_fts[-1].flatten(1)), latent
