@@ -1,5 +1,5 @@
 # quick testing script
-from pytorch_lightning import utilities as pl_utils
+from lightning_lite import utilities as ll_utils
 from pytorch_lightning.trainer.trainer import Trainer
 from pytorch_lightning.plugins import DDPPlugin
 from torchvision.transforms import transforms
@@ -86,7 +86,7 @@ m1 = arch.create_model(model, dataset, pretrained=pretrained,
                                         exclude_bn_bias=bool(args.exclude_bn_bias),
                                         optim=args.optim))
 
-pl_utils.seed.seed_everything(seed, workers=True)
+ll_utils.seed.seed_everything(seed, workers=True)
 
 dirpath = f'/NS/robustness_2/work/vnanda/deep_learning_base/checkpoints/{dataset}/'\
           f'{model}/simclr_bs_{dm.batch_size}_adv_{args.adv_aug}/'\

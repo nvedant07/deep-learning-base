@@ -1,4 +1,4 @@
-from pytorch_lightning import utilities as pl_utils
+from lightning_lite import utilities as ll_utils
 from pytorch_lightning.trainer.trainer import Trainer
 from pytorch_lightning.plugins import DDPPlugin
 from training import NicerModelCheckpointing, LitProgressBar
@@ -33,7 +33,7 @@ dm = DATA_MODULES[dataset](
     transform_train=SIMCLR_TRAIN_TRANSFORMS(DATASET_PARAMS[dataset]['input_size']) \
         if bool(args.simclr_augs) else DATASET_PARAMS[dataset]['transform_train'])
 
-pl_utils.seed.seed_everything(seed, workers=True)
+ll_utils.seed.seed_everything(seed, workers=True)
 
 checkpointer = NicerModelCheckpointing(
     dirpath='/NS/robustness_2/work/vnanda/deep_learning_base/checkpoints/'

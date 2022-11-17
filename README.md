@@ -146,7 +146,7 @@ Uses [robustness](https://github.com/MadryLab/robustness) for attack module used
 Example of supervised training (standard):
 
 ```python
-from pytorch_lightning import utilities as pl_utils
+from lightning_lite import utilities as ll_utils
 from pytorch_lightning.trainer.trainer import Trainer
 from pytorch_lightning.plugins import DDPPlugin
 from training import NicerModelCheckpointing, LitProgressBar
@@ -165,7 +165,7 @@ m1 = arch.create_model(model, dataset, pretrained=False,
                        callback=partial(LightningWrapper, dataset_name='cifar10'))
 dm = DATA_MODULES['cifar10'](data_dir='./data')
 
-pl_utils.seed.seed_everything(seed, workers=True)
+ll_utils.seed.seed_everything(seed, workers=True)
 
 checkpointer = NicerModelCheckpointing(dirpath=f'checkpoints/{dataset}/{model}', 
                                filename='{epoch}', 
@@ -287,7 +287,7 @@ m1 = arch.create_model(model, dataset, pretrained=pretrained,
                                         input_dim=hidden_dim,
                                         hidden_dim=hidden_dim))
 
-pl_utils.seed.seed_everything(seed, workers=True)
+ll_utils.seed.seed_everything(seed, workers=True)
 
 checkpointer = NicerModelCheckpointing(
                                dirpath=f'checkpoints/{dataset}/{model}/simclr_bs_{dm.batch_size}', 
@@ -341,7 +341,7 @@ m1 = arch.create_model(model, dataset, pretrained=pretrained,
                                         DATASET_PARAMS[dataset]['epochs'],
                                         dataset_name=dataset))
 
-pl_utils.seed.seed_everything(seed, workers=True)
+ll_utils.seed.seed_everything(seed, workers=True)
 
 fname = checkpoint_path.split('.ckpt')[0]
 checkpointer = NicerModelCheckpointing(

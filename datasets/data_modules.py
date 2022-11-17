@@ -2,7 +2,7 @@ import torch
 from torchvision import datasets, transforms
 from torch.utils.data import random_split, DataLoader, Dataset, Sampler, Subset
 import pytorch_lightning as pl
-from pytorch_lightning import utilities as pl_utils
+from lightning_lite import utilities as ll_utils
 from typing import Dict, Iterable, Optional, Sequence, Union, Callable
 from dataset_metadata import DATASET_PARAMS
 import numpy as np
@@ -104,7 +104,7 @@ class CIFAR10DataModule(BaseDataModule):
         self.dataset_class(self.data_dir, train=False, download=True)
 
     def setup(self, stage: Optional[str] = None):
-        pl_utils.seed.seed_everything(self.random_split)
+        ll_utils.seed.seed_everything(self.random_split)
         if stage in (None, 'fit', 'validate'):
             full_ds = self.dataset_class(root=self.data_dir, train=True, 
                 transform=self.transform_train, **self.dataset_kwargs)
@@ -134,7 +134,7 @@ class CIFAR100DataModule(BaseDataModule):
         self.dataset_class(self.data_dir, train=False, download=True)
 
     def setup(self, stage: Optional[str] = None):
-        pl_utils.seed.seed_everything(self.random_split)
+        ll_utils.seed.seed_everything(self.random_split)
         if stage in (None, 'fit', 'validate'):
             full_ds = self.dataset_class(root=self.data_dir, train=True, 
                 transform=self.transform_train, **self.dataset_kwargs)
@@ -165,7 +165,7 @@ class STL10DataModule(BaseDataModule):
         self.dataset_class(self.data_dir, split='test', download=True)
 
     def setup(self, stage: Optional[str] = None):
-        pl_utils.seed.seed_everything(self.random_split)
+        ll_utils.seed.seed_everything(self.random_split)
         if stage in (None, 'fit', 'validate'):
             self.train_ds = self.dataset_class(root=self.data_dir, 
                 split='train+unlabeled', transform=self.transform_train, 
@@ -197,7 +197,7 @@ class ImageNetDataModule(BaseDataModule):
         self.dataset_class(root=self.data_dir, split='val')
 
     def setup(self, stage: Optional[str] = None):
-        pl_utils.seed.seed_everything(self.random_split)
+        ll_utils.seed.seed_everything(self.random_split)
         if stage in (None, 'fit', 'validate'):
             full_ds = self.dataset_class(root=self.data_dir, split='train', 
                 transform=self.transform_train, **self.dataset_kwargs)
@@ -221,7 +221,7 @@ class OxfordIIITPetsDataModule(BaseDataModule):
         self.dataset_class(self.data_dir, split='test', download=True)
     
     def setup(self, stage: Optional[str] = None):
-        pl_utils.seed.seed_everything(self.random_split)
+        ll_utils.seed.seed_everything(self.random_split)
         if stage in (None, 'fit', 'validate'):
             full_ds = self.dataset_class(root=self.data_dir, split='trainval', 
                 transform=self.transform_train, **self.dataset_kwargs)
@@ -244,7 +244,7 @@ class Flowers102(BaseDataModule):
         self.dataset_class(self.data_dir, download=True)
     
     def setup(self, stage: Optional[str] = None):
-        pl_utils.seed.seed_everything(self.random_split)
+        ll_utils.seed.seed_everything(self.random_split)
         if stage in (None, 'fit', 'validate'):
             self.train_ds = self.dataset_class(root=self.data_dir, split='train', 
                 transform=self.transform_train, **self.dataset_kwargs)

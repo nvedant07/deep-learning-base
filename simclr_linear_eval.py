@@ -1,5 +1,5 @@
 # quick testing script
-from pytorch_lightning import utilities as pl_utils
+from lightning_lite import utilities as ll_utils
 from pytorch_lightning.trainer.trainer import Trainer
 from pytorch_lightning.plugins import DDPPlugin
 from torchvision.transforms import transforms
@@ -79,7 +79,7 @@ for checkpoint_path in model_checkpoints:
                          nn.Linear(module.in_features, 
                                    DATASET_PARAMS[target_dataset]['num_classes']))
 
-    pl_utils.seed.seed_everything(seed, workers=True)
+    ll_utils.seed.seed_everything(seed, workers=True)
 
     fname = checkpoint_path.split('.ckpt')[0]
     checkpointer = NicerModelCheckpointing(

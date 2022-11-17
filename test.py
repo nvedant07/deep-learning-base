@@ -1,5 +1,5 @@
 # quick testing script
-from pytorch_lightning import utilities as pl_utils
+from lightning_lite import utilities as ll_utils
 from pytorch_lightning.trainer.trainer import Trainer
 from pytorch_lightning.plugins import DDPPlugin
 from pytorch_lightning.callbacks import BasePredictionWriter
@@ -57,7 +57,7 @@ m1 = arch.create_model(model, dataset, pretrained=pretrained,
                                         return_adv_samples=True,
                                         dataset_name=dataset))
 
-pl_utils.seed.seed_everything(seed, workers=True)
+ll_utils.seed.seed_everything(seed, workers=True)
 
 adv_callback = AdvCallback(constraint_train='2',
                            eps_train=1.,
