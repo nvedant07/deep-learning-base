@@ -4,7 +4,22 @@ from torch.nn.modules.loss import _Loss
 import torch
 
 
-class PartialLinear(nn.Module):
+class ModifiedLinear(nn.Module):
+
+    def __init__(self) -> None:
+        super().__init__()
+    
+    def _copy_linear_features(self, mod):
+        fts = ['in_features', 'out_features']
+        for ft in fts:
+            self.__setattr__(ft, mod.__dict__[ft])
+    
+    def forward(self, x):
+        # should be implmented as necessary by inheriting module
+        pass
+
+
+class PartialLinear(ModifiedLinear):
 
     def __init__(self, neuron_indices: Union[torch.Tensor, list], linear: nn.Linear) -> None:
         """
@@ -15,14 +30,26 @@ class PartialLinear(nn.Module):
             isinstance(neuron_indices, torch.Tensor) else torch.tensor(neuron_indices)
         self.linear = linear
         self._copy_linear_features(linear)
-    
-    def _copy_linear_features(self, mod):
-        fts = ['in_features', 'out_features']
-        for ft in fts:
-            self.__setattr__(ft, mod.__dict__[ft])
 
     def forward(self, x):
         return self.linear(x[:,self.neuron_indices])
+
+
+class PCALinear(ModifiedLinear):
+
+    def __init__(self, num_neurons: int, linear: nn.Linear, projection_matrix: torch.Tensor) -> None:
+        """
+        projection_matrix: needs to be generated using PCA/some other dimensionality reduction method.
+            shape = num_fts x num_fts
+        """
+        super().__init__()
+        self.num_neurons = num_neurons
+        self.linear = linear
+        self.register_buffer('projection', projection_matrix[:,:self.num_neurons])
+        self._copy_linear_features(linear)
+
+    def forward(self, x):
+        return self.linear(x @ self.projection)
 
 
 class EnsembleHead(nn.Module):

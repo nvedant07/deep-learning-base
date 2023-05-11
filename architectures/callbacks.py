@@ -4,7 +4,8 @@ import torch.nn as nn
 import torch
 from torch.optim import SGD, lr_scheduler, Adam
 import torchmetrics
-from typing import Dict, Optional, Callable, Union
+from typing import Dict, Optional, Callable, Union, List
+import clip
 from .utils import InputNormalize
 from training.utils import OPTIMIZERS, _construct_opt_params
 import dataset_metadata as ds
@@ -171,6 +172,8 @@ class LightningWrapper(LightningModule):
         self.loss_meter.reset()
 
     def training_step(self, batch, batch_idx):
+        current_lr = self.trainer.optimizers[0].param_groups[0]['lr']
+        self.log('lr', current_lr)
         return self.step(batch, batch_idx)
 
     def training_step_end(self, training_step_outputs):
@@ -196,9 +199,21 @@ class LightningWrapper(LightningModule):
     
     def test_epoch_end(self, test_outputs):
         self.epoch_end(test_outputs, 'test')
+    
+    def on_train_end(self) -> None:
+        if self.trainer.is_global_zero:
+            # run evaluation on test and val sets and log accuracy
+            t = Trainer(accelerator='gpu', devices=1)
+            out = t.predict(self, 
+                dataloaders=[self.trainer.datamodule.val_dataloader(),
+                             self.trainer.datamodule.test_dataloader()])
+            print (f'out: {[o.shape for o in out]}')
+            val_acc = torch.sum(torch.argmax(out[0][0], 1) == out[0][1]) / len(out[0][0])
+            test_acc = torch.sum(torch.argmax(out[1][0], 1) == out[1][1]) / len(out[1][0])
+            self.log('final_val_acc', val_acc)
+            self.log('final_test_acc', test_acc)
 
     def prepare_model_params(self):
-        # disable requires_grad for all but last layer
         return list(self.model.parameters())
 
     def configure_optimizers(self):
@@ -405,3 +420,95 @@ class LinearEvalWrapper(LightningWrapper):
         for p in parameters[:-2]:
             p.requires_grad = False
         return parameters[-2:]
+
+
+class MultimodalEvalWrapper(LightningWrapper):
+    """
+    Wrapper used for one-shot evaluation of multi-modal models like CLIP. 
+    This uses the default prompt of 'a photo of a <class_name>' for each class
+    and converts it into text representations, that are cached for easy access.
+    Such models must have two methods: 
+    encode_text and encode_image, just like OpenAI's 
+    CLIP implementation (https://github.com/openai/CLIP/blob/main/clip/clip.py)
+    """
+    def __init__(self, tokenizer: Callable = clip.tokenize, 
+                 scale: float = 100., 
+                 class_prompt: str = 'a photo of a ',
+                 **kwargs) -> None:
+        """
+        This wrapper allows zero-shot classification using CLIP-like 
+        multi-modal models. 
+        class_prompt (str): string after which class_name is added.
+        """
+        super().__init__(**kwargs)
+        self.tokenizer = tokenizer
+        self.scale = scale
+        # information about classes (eg: prompt / class_names) can be changed 
+        # dynamically through the use of callbacks
+        self.class_prompt = class_prompt
+        self.classes = None
+        # We keep track of encoded text corresponding to each class.
+        # This way we avoid an expensive forward pass for every batch.
+        self.cached_class_embeddings = None
+
+    def _set_class_prompt(self, prompt: str) -> None:
+        self.class_prompt = prompt
+
+    def _set_classes(self, classes) -> None:
+        self.classes = classes
+    
+    def _reset_classes(self) -> None:
+        self.classes = None
+        self.cached_class_embeddings = None
+
+    def _construct_class_text(self) -> List[str]:
+        return [f'{self.class_prompt}{class_name}' for class_name in self.classes]
+
+    def forward(self, x_image: torch.Tensor, x_text: List[str] = None, *args, **kwargs):
+        if x_test is None:
+            x_test = self._construct_class_text()
+        text = self.forward_text(x_text, *args, **kwargs)
+        image = self.forward_img(x_image, *args, **kwargs)
+        return text, image
+
+    def forward_img(self, x_image, *args, **kwargs) -> torch.Tensor:
+        return self.model.encode_image(self.normalizer(x_image))
+
+    def forward_text(self, x_text, *args, **kwargs) -> torch.Tensor:
+        return self.model.encode_text(self.tokenizer(x_text))
+
+    def predictions(self, text_encoding: torch.Tensor, 
+                          image_encoding: torch.Tensor,
+                          topk: int=1) -> torch.Tensor:
+        # see OpenAI's implementation: 
+        # https://github.com/openai/CLIP/blob/main/clip/model.py
+        assert text_encoding.shape[-1] == image_encoding.shape[-1], \
+            'Dimension of text and image encoders must be same!'
+        image_encoding /= image_encoding.norm(dim=-1, keepdim=True)
+        text_encoding /= text_encoding.norm(dim=-1, keepdim=True)
+        similarity = (self.scale * image_encoding @ text_encoding.T).softmax(dim=-1)
+        values, indices = similarity.topk(topk)
+        return indices.detach(), values.detach() # shapes will be [batch_size, topk]
+
+    def predict_step(self, batch, batch_idx, dataloader_idx: Optional[int] = None):
+        image_x, y_gt = batch
+        if self.cached_class_embeddings is None:
+            self.cached_class_embeddings = self.forward_text(self._construct_class_text())
+        predictions, scores = self.predictions(self.cached_class_embeddings, 
+                                               self.forward_image(image_x))
+        if torch.distributed.is_available() and torch.distributed.is_initialized():
+            y_gt = torch.cat([y_ for y_ in self.all_gather(y_gt)])
+            predictions = torch.cat([p_ for p_ in self.all_gather(predictions)])
+            scores = torch.cat([s_ for s_ in self.all_gather(scores)])        
+        return predictions, scores, y_gt
+
+    def on_predict_epoch_end(self, results):
+        for i in range(len(results)):
+            cat_preds, cat_scores, cat_gt = None, None, None
+            for batch_res in results[i]:
+                preds, scores, gt = batch_res
+                cat_preds = preds if cat_preds is None else torch.cat((cat_preds, preds))
+                cat_gt = gt if cat_gt is None else torch.cat((cat_gt, gt))
+                cat_scores = scores if cat_scores is None else torch.cat((cat_scores, scores))
+            results[i] = [cat_preds, cat_scores, cat_gt]
+        return results

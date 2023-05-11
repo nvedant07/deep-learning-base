@@ -6,6 +6,8 @@ import torch
 import torch.nn as nn
 from torchvision import transforms
 
+from autoaugment import DATASET_TO_POLICY
+
 import gaussian_blur as gb
 
 ## Default Data Augs taken from: 
@@ -178,6 +180,8 @@ CLIP_INFERENCE_TRANSFORMS = lambda size: transforms.Compose(
     ]## without normalization since that is implemented by the model's forward pass
 )
 
+AUTOAUGMENT_TRAIN_TRANSFORMS: lambda dataset, size: transforms.Compose(
+    [transforms.Resize(size), DATASET_TO_POLICY[dataset], transforms.ToTensor()])
 
 IMAGENET_MEAN = torch.tensor([0.485, 0.456, 0.406])
 IMAGENET_STD = torch.tensor([0.229, 0.224, 0.225])
@@ -191,6 +195,7 @@ STANDARD_STD = torch.tensor([1., 1., 1.])
 DATASET_PARAMS = {
     'clip': {
         ## num classes is not needed -- OpenAI CLIP models have no head
+        ## update loss functions to indicate clip losses
         'num_classes': 0,
         'mean': CLIP_MODELS_MEAN,
         'std': CLIP_MODELS_STD,
@@ -275,6 +280,23 @@ DATASET_PARAMS = {
         'step_lr_gamma': 0.1, 
         'lr': 0.1, 
         'momentum': 0.9,
+        'warmup_steps': 100,
+        'input_size': 224
+    },
+    'imagenetv2': {
+        'num_classes': 1000,
+        'mean': IMAGENET_MEAN, 
+        'std': IMAGENET_STD, 
+        'transform_train': TRAIN_TRANSFORMS_IMAGENET,
+        'transform_test': TEST_TRANSFORMS_IMAGENET,
+        'loss': nn.CrossEntropyLoss(), 
+        'epochs': 200,
+        'batch_size':256,
+        'weight_decay':1e-4,
+        'step_lr': 50, 
+        'step_lr_gamma': 0.1, 
+        'lr': 0.1, 
+        'momentum': 0.9,
         'warmup_steps': 100
     },
     'cifar10': {
@@ -315,6 +337,22 @@ DATASET_PARAMS = {
         'std': torch.tensor([0.2603, 0.2566, 0.2713]),
         'transform_train': TRAIN_TRANSFORMS_DEFAULT(96),
         'transform_test': TEST_TRANSFORMS_DEFAULT(96),
+        'loss': nn.CrossEntropyLoss(), 
+        'epochs': 150,
+        'batch_size': 256,
+        'weight_decay':5e-4,
+        'step_lr': 50, 
+        'step_lr_gamma': 0.1, 
+        'lr': 0.1, 
+        'momentum': 0.9,
+        'warmup_steps': 100
+    },
+    'places365': {
+        'num_classes': 365, 
+        'mean': torch.tensor([0.5184, 0.5184, 0.5184]),
+        'std': torch.tensor([0.2903, 0.2895, 0.2889]),
+        'transform_train': TRAIN_TRANSFORMS_DEFAULT(256),
+        'transform_test': TEST_TRANSFORMS_DEFAULT(256),
         'loss': nn.CrossEntropyLoss(), 
         'epochs': 150,
         'batch_size': 256,

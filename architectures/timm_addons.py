@@ -9,7 +9,11 @@ import timm.models as models
 ## TODO: do something about this import
 import sys
 sys.path.append('../training')
-from partial_inference_layer import PartialLinear
+sys.path.append('deep-learning-base/training')
+try:
+    from partial_inference_layer import PartialLinear
+except:
+    from training.partial_inference_layer import PartialLinear
 
 models.registry._model_pretrained_cfgs['wide_resnet50_4'] = models.resnet._cfg('')
 def wide_resnet50_4(pretrained=False, **kwargs):

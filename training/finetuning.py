@@ -6,7 +6,7 @@ from torch.optim import lr_scheduler
 from pytorch_lightning.callbacks import Callback
 from pytorch_lightning.trainer.trainer import Trainer
 from pytorch_lightning.core.lightning import LightningModule
-from training.partial_inference_layer import PartialLinear
+from training.partial_inference_layer import PartialLinear, PCALinear
 from architectures.callbacks import LightningWrapper
 from training.utils import OPTIMIZERS, _construct_opt_params, get_cosine_schedule_with_warmup
 
@@ -19,7 +19,8 @@ def setup_model_for_finetuning(model: nn.Module,
                                inplace: bool = True,
                                infer_features: bool = False,
                                num_neurons: Optional[int] = None, 
-                               return_metadata: bool = False):
+                               return_metadata: bool = False, 
+                               layer_kwargs: dict = {}):
     """
     model (nn.Module): a PyTorch model
     num_classes: classes for the downstream dataset
@@ -34,7 +35,7 @@ def setup_model_for_finetuning(model: nn.Module,
         in_fts = param.in_features
     else:
         name = 'fc'
-        in_fts = model(ch.rand((1,3,224,224))).shape[1]
+        in_fts = model(ch.rand((1,3,224,224))).shape[1] # TODO: remove this hard coded input dim
 
     if mode is not None:
         assert (fraction is not None and num_neurons is None) or \
@@ -51,9 +52,14 @@ def setup_model_for_finetuning(model: nn.Module,
             ## (https://github.com/pytorch/pytorch/issues/61032); better to just do 
             ## masking on CPU and then use the (slower) .to(device) call here
             chosen_neurons = ch.randperm(in_fts)[:num_neurons]
+            new_layer = PartialLinear(chosen_neurons, linear)
         elif mode == 'first':
             chosen_neurons = ch.arange(num_neurons)
-        new_layer = PartialLinear(chosen_neurons, linear)
+            new_layer = PartialLinear(chosen_neurons, linear)
+        elif mode == 'pca':
+            assert 'projection_matrix' in layer_kwargs, \
+                'layer_kwargs must have projection_matrix for mode == pca'
+            new_layer = PCALinear(num_neurons, linear, **layer_kwargs)
     else:
         new_layer = nn.Linear(in_fts, num_classes)
     if inplace:
@@ -77,7 +83,11 @@ def get_param_names(model: nn.Module, mode: str):
 
 ## add cosine decay on LR -- useful for full finetuning
 class CosineLRWrapper(LightningWrapper):
-
+    """
+    Callback on the model itself.
+    CAUTION: this changes the LR at every step and 
+    hence step_lr should be adjusted accordingly
+    """
     def __init__(self, *args, **kwds) -> None:
         super().__init__(*args, **kwds)
     
@@ -95,6 +105,9 @@ class CosineLRWrapper(LightningWrapper):
 
 
 class FinetuningCallback(Callback):
+    """
+    Callback passed to trainer, 
+    """
 
     def __init__(self, mode: str) -> None:
         """
@@ -108,6 +121,8 @@ class FinetuningCallback(Callback):
         self.mode = mode
 
     def on_train_epoch_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
+        if trainer.is_global_zero:
+            print (f'Learning rate at start of training epoch: {[o.param_groups[0]["lr"] for o in trainer.optimizers]}')
         if self.mode == 'linear':
             named_mods = list(pl_module.model.named_children())
             for _, mod in named_mods[:-1]:

@@ -1,12 +1,13 @@
-import torch
+import os, torch
 from torchvision import datasets, transforms
 from torch.utils.data import random_split, DataLoader, Dataset, Sampler, Subset
 import pytorch_lightning as pl
 from pytorch_lightning import utilities as pl_utils
 from typing import Dict, Iterable, Optional, Sequence, Union, Callable
 from dataset_metadata import DATASET_PARAMS
+from custom_imagefolder import CustomImageFolder
 import numpy as np
-
+import tarfile, urllib.request
 
 class BaseDataModule(pl.LightningDataModule):
     def __init__(self, 
@@ -211,6 +212,39 @@ class ImageNetDataModule(BaseDataModule):
                 transform=self.transform_test, **self.dataset_kwargs)
 
 
+class ImageNetV2DataModule(BaseDataModule):
+    # Only contains test data, no training/val set
+    def __init__(self, dataset_class=CustomImageFolder, *args, **kwargs):
+        super(ImageNetV2DataModule, self).__init__(dataset_class, *args, **kwargs)
+        if self.transform_test is None:
+            self.transform_test = DATASET_PARAMS['imagenetv2']['transform_test']
+        if self.transform_train is None:
+            self.transform_train = DATASET_PARAMS['imagenetv2']['transform_train']
+        if self.batch_size is None:
+            self.batch_size = DATASET_PARAMS['imagenetv2']['batch_size']
+        
+        self.init_remaining_attrs('imagenetv2')
+        self.full_data_path = f'{self.data_dir}/imagenetv2-matched-frequency-format-val'
+
+    def prepare_data(self):
+        if not os.path.exists(self.full_data_path):
+            dataset_url = 'https://s3-us-west-2.amazonaws.com/imagenetv2public/imagenetv2-matched-frequency.tar.gz'
+            urllib.request.urlretrieve(dataset_url, f'{self.data_dir}/imagenetv2-matched-frequency.tar.gz')
+            with tarfile.open(f'{self.data_dir}/imagenetv2-matched-frequency.tar.gz') as f:
+                f.extractall()
+            os.remove(f'{self.data_dir}/imagenetv2-matched-frequency.tar.gz')
+
+    def classes_function(self, sorted_dirs):
+        return {cls_name: int(cls_name) for cls_name in sorted_dirs}
+
+    def setup(self, stage: Optional[str] = None):
+        pl_utils.seed.seed_everything(self.random_split)
+        self.test_ds = self.dataset_class(root=self.full_data_path, 
+            loader=datasets.folder.default_loader,
+            transform=self.transform_test, 
+            find_classes_fun=self.classes_function, **self.dataset_kwargs)
+
+
 class OxfordIIITPetsDataModule(BaseDataModule):
     def __init__(self, dataset_class=datasets.OxfordIIITPet, *args, **kwargs):
         super().__init__(dataset_class, *args, **kwargs)
@@ -257,11 +291,48 @@ class Flowers102(BaseDataModule):
                 transform=self.transform_test, **self.dataset_kwargs)
 
 
+class Places365(BaseDataModule):
+    def __init__(self, dataset_class=datasets.Places365, *args, **kwargs):
+        super().__init__(dataset_class, *args, **kwargs)
+    
+    def prepare_data(self):
+        if not os.path.exists(f'{self.data_dir}/data_256_standard'):
+            assert os.path.exists(f'{self.data_dir}/train_256_places365standard.tar'), \
+                'Download tar file from source before running experiments'
+            with tarfile.open(f'{self.data_dir}/train_256_places365standard.tar') as f:
+                f.extractall()
+            os.remove(f'{self.data_dir}/train_256_places365standard.tar')
+            shutil.move('data_256', 'data_256_standard')
+        if not os.path.exists(f'{self.data_dir}/val_256'):
+            assert os.path.exists(f'{self.data_dir}/val_256.tar'), \
+                'Download tar file from source before running experiments'
+            with tarfile.open(f'{self.data_dir}/val_256.tar') as f:
+                f.extractall()
+            os.remove(f'{self.data_dir}/val_256.tar')
+    
+    def setup(self, stage: Optional[str]=None):
+        if stage in (None, 'fit', 'validation'):
+            pl_utils.seed.seed_everything(self.random_split)
+            full_ds = self.dataset_class(root=self.data_dir, split='train-standard', 
+                small=True, transform=self.transform_train, **self.dataset_kwargs)
+            train_size = int((1-self.val_frac)*len(full_ds))
+            self.train_ds, self.val_ds = random_split(full_ds, [train_size, len(full_ds) - train_size])
+            self.val_ds.__setattr__('transform', self.transform_test)
+            if self.subset:
+                self.subset_train_ds()
+        if stage in (None, 'test'):
+            self.test_ds = self.dataset_class(root=self.data_dir, split='val', 
+                small=True, transform=self.transform_test, **self.dataset_kwargs)
+        
+
+
 DATA_MODULES = {
     'imagenet': ImageNetDataModule, 
+    'imagenetv2': ImageNetV2DataModule, 
     'cifar10': CIFAR10DataModule, 
     'cifar100': CIFAR100DataModule, 
     'stl10': STL10DataModule,
     'oxford-iiit-pets': OxfordIIITPetsDataModule,
-    'flowers': Flowers102
+    'flowers': Flowers102,
+    'places365': Places365
 }
