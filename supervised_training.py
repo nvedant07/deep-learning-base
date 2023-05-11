@@ -1,6 +1,6 @@
 import torch
 import math
-from pytorch_lightning import utilities as pl_utils
+from lightning_lite import utilities as ll_utils
 from pytorch_lightning.trainer.trainer import Trainer
 from pytorch_lightning.plugins import DDPPlugin
 from training import NicerModelCheckpointing, LitProgressBar
@@ -109,7 +109,7 @@ m1 = arch.create_model(model, dataset, pretrained=False,
                                         total_steps=total_steps,
                                         training_params_dataset=dataset))
 
-pl_utils.seed.seed_everything(seed, workers=True)
+ll_utils.seed.seed_everything(seed, workers=True)
 
 base_dirpath = f'/NS/robustness_2/work/vnanda/deep_learning_base/checkpoints/{dataset}'
 model_path = f'{model}_bs_{batch_size}_seed_{seed}_lr_{args.lr}_opt_{args.optimizer}_step_{args.step_lr}'\

@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from pytorch_lightning import utilities as pl_utils
+from lightning_lite import utilities as ll_utils
 from typing import Callable, Optional, Dict
 from collections import OrderedDict
 import logging, os
@@ -126,7 +126,7 @@ def create_model(model_name: str,
             from a user-defined checkpoint file. Must take 3 args: model, pretrained, checkpoint_path
     use_timm_for_cifar: forces use of timm models even for cifar10
     """
-    pl_utils.seed.seed_everything(seed)
+    ll_utils.seed.seed_everything(seed)
 
     if dataset_name not in ds.DATASET_PARAMS:    dataset_name = 'imagenet'
     if num_classes is None:    num_classes = ds.DATASET_PARAMS[dataset_name]['num_classes']

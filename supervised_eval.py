@@ -1,4 +1,4 @@
-from pytorch_lightning import utilities as pl_utils
+from lightning_lite import utilities as ll_utils
 from pytorch_lightning.trainer.trainer import Trainer
 from pytorch_lightning.plugins import DDPPlugin
 from training import NicerModelCheckpointing, LitProgressBar
@@ -25,7 +25,7 @@ m1 = arch.create_model(model, dataset, pretrained=True,
                        callback=partial(LightningWrapper, dataset_name=dataset))
 dm = DATA_MODULES[dataset](data_dir='/NS/twitter_archive/work/vnanda/data')
 
-# pl_utils.seed.seed_everything(seed, workers=True)
+# ll_utils.seed.seed_everything(seed, workers=True)
 
 ## always use ddp for multi-GPU training -- works much faster, does not split batches
 ## can pass any quantity to LitProgressBar to be
