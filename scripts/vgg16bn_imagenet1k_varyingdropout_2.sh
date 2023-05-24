@@ -28,7 +28,7 @@ BATCH_SIZE=256
 # --step_lr 500 \
 # --warmup_steps 1000 \
 # --gradient_clipping 1.0 \
-# --drop_rate 0.1
+# --drop_rate 0.5
 
 python -m deep-learning-base.supervised_training \
 --dataset imagenet \
@@ -43,7 +43,7 @@ python -m deep-learning-base.supervised_training \
 --step_lr 500 \
 --warmup_steps 1000 \
 --gradient_clipping 1.0 \
---drop_rate 0.2
+--drop_rate 0.6
 
 python -m deep-learning-base.supervised_training \
 --dataset imagenet \
@@ -58,7 +58,7 @@ python -m deep-learning-base.supervised_training \
 --step_lr 500 \
 --warmup_steps 1000 \
 --gradient_clipping 1.0 \
---drop_rate 0.3
+--drop_rate 0.7
 
 python -m deep-learning-base.supervised_training \
 --dataset imagenet \
@@ -73,4 +73,4 @@ python -m deep-learning-base.supervised_training \
 --step_lr 500 \
 --warmup_steps 1000 \
 --gradient_clipping 1.0 \
---drop_rate 0.4
+--drop_rate 0.8

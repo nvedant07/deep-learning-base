@@ -330,3 +330,30 @@ class CompositeLoss(BaseLoss):
     def __repr__(self) -> str:
         return ' '.join([str(l) for l in self.losses])
 
+
+class DeCovLoss(BaseLoss):
+    """
+    Proposed as an alternative to dropout in https://arxiv.org/abs/1511.06068
+    Reducing Overfitting in Deep Networks by Decorrelating Representations
+    """
+    def __init__(self, alpha=1.):
+        super().__init__()
+        self.alpha = alpha # weight to put on regularizer
+        self.main_loss = nn.CrossEntropyLoss()
+    
+    def __call__(self, pred, true):
+        op, rep = pred
+        # rep (ch.Tensor): shape (batch_size, dim)
+        N = rep.shape[0]
+        diffs = rep - ch.mean(rep, axis=0)
+        mat_C = (diffs.T @ diffs) / N
+        self.reg = 0.5 * (ch.linalg.norm(mat_C, 'fro') ** 2 - \
+            ch.linalg.norm(ch.diagonal(mat_C, 0), 2) ** 2)
+        return self.main_loss(op, true) + self.alpha * self.reg
+
+    def clear_cache(self) -> None:
+        self.reg = None
+        ch.cuda.empty_cache()
+
+    def __repr__(self) -> str:
+        return f'Decov loss: {self.reg.item()}'

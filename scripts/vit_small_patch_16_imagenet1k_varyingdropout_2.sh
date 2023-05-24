@@ -6,12 +6,12 @@
 #SBATCH --ntasks-per-node=1     # crucial - only 1 task per dist per node!
 #SBATCH -t 2-00:00              # Maximum run-time in D-HH:MM
 #SBATCH --mem=100GB               # Memory pool for all cores (see also --mem-per-cpu)
-#SBATCH -o /NS/robustness_2/work/vnanda/invariances_in_reps/deep-learning-base/checkpoints/sbatch_logs/%x_%j.out      # File to which STDOUT will be written
-#SBATCH -e /NS/robustness_2/work/vnanda/invariances_in_reps/deep-learning-base/checkpoints/sbatch_logs/%x_%j.err      # File to which STDERR will be written
+#SBATCH -o /NS/robustness_2/work/vnanda/invariances_in_reps/deep-learning-base/checkpoints/console_logs/%x_%j.out      # File to which STDOUT will be written
+#SBATCH -e /NS/robustness_2/work/vnanda/invariances_in_reps/deep-learning-base/checkpoints/console_logs/%x_%j.err      # File to which STDERR will be written
 
 
 EPOCHS=50
-MODEL="vgg16_bn"
+MODEL="vit_small_patch16_224"
 BATCH_SIZE=256
 
 # cosine lr schedule with longer warmup; bigger learning rates
@@ -28,7 +28,7 @@ BATCH_SIZE=256
 # --step_lr 500 \
 # --warmup_steps 1000 \
 # --gradient_clipping 1.0 \
-# --drop_rate 0.1
+# --drop_rate 0.5
 
 python -m deep-learning-base.supervised_training \
 --dataset imagenet \
@@ -43,7 +43,7 @@ python -m deep-learning-base.supervised_training \
 --step_lr 500 \
 --warmup_steps 1000 \
 --gradient_clipping 1.0 \
---drop_rate 0.2
+--drop_rate 0.6
 
 python -m deep-learning-base.supervised_training \
 --dataset imagenet \
@@ -58,7 +58,7 @@ python -m deep-learning-base.supervised_training \
 --step_lr 500 \
 --warmup_steps 1000 \
 --gradient_clipping 1.0 \
---drop_rate 0.3
+--drop_rate 0.7
 
 python -m deep-learning-base.supervised_training \
 --dataset imagenet \
@@ -73,4 +73,4 @@ python -m deep-learning-base.supervised_training \
 --step_lr 500 \
 --warmup_steps 1000 \
 --gradient_clipping 1.0 \
---drop_rate 0.4
+--drop_rate 0.8

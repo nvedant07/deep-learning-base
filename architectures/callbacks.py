@@ -46,9 +46,15 @@ class LightningWrapper(LightningModule):
         self.model = model
         self.accuracy_top1 = torchmetrics.Accuracy(top_k=1)
         self.accuracy_top5 = torchmetrics.Accuracy(top_k=5)
-        self.accuracy1_meter = AverageMeter('Acc@1')
-        self.accuracy5_meter = AverageMeter('Acc@5')
-        self.loss_meter = AverageMeter('Loss')
+        self.accuracy1_meter = {'train': AverageMeter('Acc@1'), 
+                                'val': AverageMeter('Acc@1'),
+                                'test': AverageMeter('Acc@1')}
+        self.accuracy5_meter = {'train': AverageMeter('Acc@5'), 
+                                'val': AverageMeter('Acc@5'),
+                                'test': AverageMeter('Acc@5')}
+        self.loss_meter = {'train': AverageMeter('Loss'),
+                           'val': AverageMeter('Loss'),
+                           'test': AverageMeter('Loss')}
 
         assert dataset_name or (mean is not None and std is not None), \
             'Both dataset_name and (mean, std) cannot be None'
@@ -97,6 +103,11 @@ class LightningWrapper(LightningModule):
 
     def _return_x(self):
         return 'with_x' in self.inference_kwargs and self.inference_kwargs['with_x']
+    
+    def _filter_output_from_pred(self, pred):
+        if self._has_latent():
+            return pred[0]
+        return pred
 
     def predict_step(self, batch, batch_idx, dataloader_idx: Optional[int] = None):
         x, y = batch
@@ -107,7 +118,7 @@ class LightningWrapper(LightningModule):
         else:
             out = out.detach()
 
-        if torch.distributed.is_available() and torch.distributed.is_initialized():
+        if torch.distributed.is_available() and torch.distributed.is_initialized() and self.trainer.num_gpus > 1:
             all_y = self.all_gather(y)
             all_y = torch.cat([all_y[i] for i in range(len(all_y))])
             all_x = self.all_gather(x)
@@ -150,26 +161,27 @@ class LightningWrapper(LightningModule):
     def step(self, batch, batch_idx):
         ## use this for compatibility with ddp2 and dp
         x, y = batch
-        op = self(x)
+        op = self(x, **self.inference_kwargs)
         return {'pred': op, 'gt': y}
     
     def step_end(self, step_ops, stage):
         ## use this for compatibility with ddp2 and dp
         pred, true = step_ops['pred'], step_ops['gt']
-        loss = self.loss(pred, true)
-        self.accuracy1_meter.update(self.accuracy_top1(pred, true))
-        self.accuracy5_meter.update(self.accuracy_top5(pred, true))
-        self.loss_meter.update(loss)
-        self.log(f'running_{stage}_acc', self.accuracy_top1(pred, true))
+        loss = self.loss(pred, true) # pred might be just the output or a tuple based on inference kwargs
+        pred = self._filter_output_from_pred(pred)
+        self.accuracy1_meter[stage].update(self.accuracy_top1(pred, true).detach().item(), len(true))
+        self.accuracy5_meter[stage].update(self.accuracy_top5(pred, true).detach().item(), len(true))
+        self.loss_meter[stage].update(loss.detach().item(), len(true))
+        self.log(f'running_{stage}_acc', self.accuracy1_meter[stage].avg)
         return {'loss': loss}
     
     def epoch_end(self, all_ops, stage):
-        self.log(f'{stage}_acc1', self.accuracy1_meter.avg)
-        self.accuracy1_meter.reset()
-        self.log(f'{stage}_acc5', self.accuracy5_meter.avg)
-        self.accuracy5_meter.reset()
-        self.log(f'{stage}_loss', self.loss_meter.avg)
-        self.loss_meter.reset()
+        self.log(f'{stage}_acc1', self.accuracy1_meter[stage].avg)
+        self.accuracy1_meter[stage].reset()
+        self.log(f'{stage}_acc5', self.accuracy5_meter[stage].avg)
+        self.accuracy5_meter[stage].reset()
+        self.log(f'{stage}_loss', self.loss_meter[stage].avg)
+        self.loss_meter[stage].reset()
 
     def training_step(self, batch, batch_idx):
         current_lr = self.trainer.optimizers[0].param_groups[0]['lr']
@@ -203,15 +215,12 @@ class LightningWrapper(LightningModule):
     def on_train_end(self) -> None:
         if self.trainer.is_global_zero:
             # run evaluation on test and val sets and log accuracy
-            t = Trainer(accelerator='gpu', devices=1)
+            t = Trainer(accelerator='gpu', devices=1, logger=False)
             out = t.predict(self, 
                 dataloaders=[self.trainer.datamodule.val_dataloader(),
                              self.trainer.datamodule.test_dataloader()])
-            print (f'out: {[o.shape for o in out]}')
-            val_acc = torch.sum(torch.argmax(out[0][0], 1) == out[0][1]) / len(out[0][0])
-            test_acc = torch.sum(torch.argmax(out[1][0], 1) == out[1][1]) / len(out[1][0])
-            self.log('final_val_acc', val_acc)
-            self.log('final_test_acc', test_acc)
+            self.final_val_acc = torch.sum(torch.argmax(out[0][0], 1) == out[0][-1]) / len(out[0][0])
+            self.final_test_acc = torch.sum(torch.argmax(out[1][0], 1) == out[1][-1]) / len(out[1][0])
 
     def prepare_model_params(self):
         return list(self.model.parameters())
@@ -236,12 +245,13 @@ class AdvAttackWrapper(LightningWrapper):
         super().__init__(model, *args, **kwargs)
         self.return_adv_samples = return_adv_samples
         self.attacker = Attacker(self.model, self.normalizer)
-        self.clean_accuracy1_meter = AverageMeter('clean_acc@1')
-        self.clean_accuracy5_meter = AverageMeter('clean_acc@5')
-        self.clean_loss_meter = AverageMeter('clean_loss')
-        self.adv_accuracy1_meter = AverageMeter('adv_acc@1')
-        self.adv_accuracy5_meter = AverageMeter('adv_acc@5')
-        self.adv_loss_meter = AverageMeter('adv_loss')
+        stages = ['train', 'val', 'test']
+        self.clean_accuracy1_meter = {s: AverageMeter('clean_acc@1') for s in stages}
+        self.clean_accuracy5_meter = {s: AverageMeter('clean_acc@5') for s in stages}
+        self.clean_loss_meter = {s: AverageMeter('clean_loss') for s in stages}
+        self.adv_accuracy1_meter = {s: AverageMeter('adv_acc@1') for s in stages}
+        self.adv_accuracy5_meter = {s: AverageMeter('adv_acc@5') for s in stages}
+        self.adv_loss_meter = {s: AverageMeter('adv_loss') for s in stages}
 
     def forward(self, x, targ=None, adv=False, return_adv=False, 
                 *args, **kwargs):
@@ -324,37 +334,37 @@ class AdvAttackWrapper(LightningWrapper):
         loss_clean = self.loss(clean_pred, true).detach().item()
         running_clean_acc1 = self.accuracy_top1(clean_pred, true).detach().item()
         running_clean_acc5 = self.accuracy_top5(clean_pred, true).detach().item()
-        self.clean_accuracy1_meter.update(running_clean_acc1, len(true))
-        self.clean_accuracy5_meter.update(running_clean_acc5, len(true))
-        self.clean_loss_meter.update(loss_clean, len(true))
+        self.clean_accuracy1_meter[split].update(running_clean_acc1, len(true))
+        self.clean_accuracy5_meter[split].update(running_clean_acc5, len(true))
+        self.clean_loss_meter[split].update(loss_clean, len(true))
 
         loss_adv = self.loss(adv_pred, true)
         if split != 'train':
             loss_adv = loss_adv.detach()
         running_adv_acc1 = self.accuracy_top1(adv_pred, true).detach().item()
         running_adv_acc5 = self.accuracy_top5(adv_pred, true).detach().item()
-        self.adv_accuracy1_meter.update(running_adv_acc1, len(true))
-        self.adv_accuracy5_meter.update(running_adv_acc5, len(true))
-        self.adv_loss_meter.update(loss_adv.item(), len(true))
+        self.adv_accuracy1_meter[split].update(running_adv_acc1, len(true))
+        self.adv_accuracy5_meter[split].update(running_adv_acc5, len(true))
+        self.adv_loss_meter[split].update(loss_adv.item(), len(true))
 
-        self.log('running_acc_clean', self.clean_accuracy1_meter.avg)
-        self.log('running_acc_adv', self.adv_accuracy1_meter.avg)
+        self.log('running_acc_clean', self.clean_accuracy1_meter[split].avg)
+        self.log('running_acc_adv', self.adv_accuracy1_meter[split].avg)
 
         return {'loss': loss_adv}
 
     def epoch_end(self, outputs, split):
-        self.log(f'clean_{split}_acc1', self.clean_accuracy1_meter.avg)
-        self.clean_accuracy1_meter.reset()
-        self.log(f'adv_{split}_acc1', self.adv_accuracy1_meter.avg)
-        self.adv_accuracy1_meter.reset()
-        self.log(f'clean_{split}_acc5', self.clean_accuracy5_meter.avg)
-        self.clean_accuracy5_meter.reset()
-        self.log(f'adv_{split}_acc5', self.adv_accuracy5_meter.avg)
-        self.adv_accuracy5_meter.reset()
-        self.log(f'{split}_loss_adv', self.adv_loss_meter.avg)
-        self.adv_loss_meter.reset()
-        self.log(f'{split}_loss_clean', self.clean_loss_meter.avg)
-        self.clean_loss_meter.reset()
+        self.log(f'clean_{split}_acc1', self.clean_accuracy1_meter[split].avg)
+        self.clean_accuracy1_meter[split].reset()
+        self.log(f'adv_{split}_acc1', self.adv_accuracy1_meter[split].avg)
+        self.adv_accuracy1_meter[split].reset()
+        self.log(f'clean_{split}_acc5', self.clean_accuracy5_meter[split].avg)
+        self.clean_accuracy5_meter[split].reset()
+        self.log(f'adv_{split}_acc5', self.adv_accuracy5_meter[split].avg)
+        self.adv_accuracy5_meter[split].reset()
+        self.log(f'{split}_loss_adv', self.adv_loss_meter[split].avg)
+        self.adv_loss_meter[split].reset()
+        self.log(f'{split}_loss_clean', self.clean_loss_meter[split].avg)
+        self.clean_loss_meter[split].reset()
         return outputs
 
     def training_step(self, batch, batch_idx):

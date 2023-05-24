@@ -1,18 +1,21 @@
 import torch
 import math
-from lightning_lite import utilities as ll_utils
+from pytorch_lightning import utilities as pl_utils
 from pytorch_lightning.trainer.trainer import Trainer
 from pytorch_lightning.plugins import DDPPlugin
 from training import NicerModelCheckpointing, LitProgressBar
 from . import architectures as arch
 from architectures.callbacks import LightningWrapper
+from attack.losses import DeCovLoss
 from data_modules import DATA_MODULES
 from training import finetuning as ft
 from dataset_metadata import DATASET_PARAMS, \
-    SIMCLR_TRAIN_TRANSFORMS, AUTOAUGMENT_TRAIN_TRANSFORMS
+    SIMCLR_TRAIN_TRANSFORMS
+    # AUTOAUGMENT_TRAIN_TRANSFORMS
 from functools import partial
 import argparse
 from pytorch_lightning.loggers import WandbLogger
+import wandb
 
 """
 run as:
@@ -52,6 +55,9 @@ parser.add_argument('--gradient_clipping', type=float, default=0.)
 parser.add_argument('--use_timm_for_cifar', dest='use_timm_for_cifar', 
                     action='store_true', default=False)
 parser.add_argument('--wandb_name', type=str, default=None)
+parser.add_argument('--drop_rate', type=float, default=None)
+parser.add_argument('--loss', type=str, default=None)
+parser.add_argument('--decov_alpha', type=float, default=1.)
 args = parser.parse_args()
 
 
@@ -60,6 +66,15 @@ if args.wandb_name is not None:
     wandb_logger = WandbLogger(project=args.wandb_name, 
                                config=wandb.helper.parse_config(args, 
                                       exclude=('max_epochs', 'save_every', 'wandb_name')))
+
+if args.loss is not None:
+    assert args.loss == 'decov', 'Only DeCov Loss supported!'
+    args.decov_alpha = 10**(-args.decov_alpha)
+    loss_function = DeCovLoss(alpha=args.decov_alpha)
+    inference_kwargs = {'with_latent': True}
+    args.loss += f'_{args.decov_alpha:.4f}'
+else:
+    loss_function, inference_kwargs = None, {}
 
 def lightningmodule_callback(args):
     if args.warmup_steps is not None:
@@ -86,6 +101,7 @@ seed = args.seed
 max_epochs = DATASET_PARAMS[dataset]['epochs'] if args.max_epochs is None else args.max_epochs
 devices = torch.cuda.device_count()
 batch_size = args.batch_size
+model_kwargs = {'drop_rate': args.drop_rate} if args.drop_rate is not None else {}
 
 
 dm = DATA_MODULES[dataset](
@@ -107,17 +123,23 @@ m1 = arch.create_model(model, dataset, pretrained=False,
                                         lr=args.lr,
                                         warmup_steps=args.warmup_steps,
                                         total_steps=total_steps,
-                                        training_params_dataset=dataset))
+                                        training_params_dataset=dataset,
+                                        loss=loss_function,
+                                        inference_kwargs=inference_kwargs),
+                       model_kwargs=model_kwargs)
 
-ll_utils.seed.seed_everything(seed, workers=True)
+pl_utils.seed.seed_everything(seed, workers=True)
 
-base_dirpath = f'/NS/robustness_2/work/vnanda/deep_learning_base/checkpoints/{dataset}'
-model_path = f'{model}_bs_{batch_size}_seed_{seed}_lr_{args.lr}_opt_{args.optimizer}_step_{args.step_lr}'\
+model_name = f'{model}' + '_'.join([f'{k}_{v}' for k,v in model_kwargs.items()])
+base_dirpath = f'/NS/robustness_2/work/vnanda/invariances_in_reps/deep-learning-base/checkpoints/{dataset}'
+model_path = f'{model_name}_bs_{batch_size}_seed_{seed}_lr_{args.lr}_opt_{args.optimizer}_step_{args.step_lr}'\
              f'_warmup_{args.warmup_steps}_gradclip_{args.gradient_clipping}'
 if args.simclr_augs:
     model_path += '_simclr_augs'
 if args.autoaugment:
     model_path += '_autoaugment'
+if args.loss is not None:
+    model_path += f'_{args.loss}'
 checkpointer = NicerModelCheckpointing(
     dirpath=f'{base_dirpath}/{model_path}', 
     filename='{epoch}', 
@@ -142,4 +164,9 @@ trainer = Trainer(accelerator='gpu', devices=devices,
                   check_val_every_n_epoch=1,
                   callbacks=[LitProgressBar(['loss', 'running_train_acc', 'running_val_acc']), 
                              checkpointer])
-trainer.fit(m1, datamodule=dm)
+output = trainer.fit(m1, datamodule=dm)
+if trainer.is_global_zero:
+    if args.wandb_name is not None:
+        wandb_logger.log_metrics({'final_val_acc': m1.final_val_acc, 
+                          'final_test_acc': m1.final_test_acc},
+                          trainer.global_step)

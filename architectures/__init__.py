@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from lightning_lite import utilities as ll_utils
+from pytorch_lightning import utilities as pl_utils
 from typing import Callable, Optional, Dict
 from collections import OrderedDict
 import logging, os
@@ -118,15 +118,17 @@ def create_model(model_name: str,
                 num_classes: Optional[int] = None,
                 loading_function_kwargs: Dict = {},
                 use_timm_for_cifar: bool = False,
-                multimodal_clip: bool = False) -> nn.Module:
+                multimodal_clip: bool = False,
+                model_kwargs: dict = {}) -> nn.Module:
     """
     callback: function that can be used to alter the model after creation 
             (eg: adding more classification layers)
     loading_function: user-defined function that defines the logic for loading weights
             from a user-defined checkpoint file. Must take 3 args: model, pretrained, checkpoint_path
     use_timm_for_cifar: forces use of timm models even for cifar10
+    model_kwargs: passed to constructor of timm models, use for stuff like chaning dropout strength
     """
-    ll_utils.seed.seed_everything(seed)
+    pl_utils.seed.seed_everything(seed)
 
     if dataset_name not in ds.DATASET_PARAMS:    dataset_name = 'imagenet'
     if num_classes is None:    num_classes = ds.DATASET_PARAMS[dataset_name]['num_classes']
@@ -161,7 +163,8 @@ def create_model(model_name: str,
         model = timm.create_model(model_name, 
                                   num_classes=num_classes,
                                   pretrained= ~should_custom_load and pretrained, ## 
-                                  checkpoint_path='') ## default loading happens via loading_function
+                                  checkpoint_path='',
+                                  **model_kwargs) ## default loading happens via loading_function
         if should_custom_load:    loading_function(model, pretrained, 
                                                    checkpoint_path, **loading_function_kwargs)
 

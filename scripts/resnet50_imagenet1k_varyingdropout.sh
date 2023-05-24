@@ -11,7 +11,7 @@
 
 
 EPOCHS=50
-MODEL="vgg16_bn"
+MODEL="resnet50"
 BATCH_SIZE=256
 
 # cosine lr schedule with longer warmup; bigger learning rates

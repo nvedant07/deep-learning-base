@@ -27,12 +27,12 @@ model = 'resnet18'
 # model = 'resnet50'
 # model = 'convit_base'
 
-checkpoint_path = '/NS/robustness_2/work/vnanda/adv-trades/checkpoints'\
-                  '/resnet18/beta_1.0_eps_1.000/checkpoint.pt.best'
+# checkpoint_path = '/NS/robustness_2/work/vnanda/adv-trades/checkpoints'\
+#                   '/resnet18/beta_1.0_eps_1.000/checkpoint.pt.best'
 # checkpoint_path = './tests/weights/resnet18_cifar10.pt'
 # checkpoint_path = './tests/weights/vgg16_cifar10.pt'
 # checkpoint_path = './tests/weights/resnet18_l2eps3_imagenet.pt'
-# checkpoint_path = ''
+checkpoint_path = ''
 
 pretrained = True
 seed = 2
