@@ -2,6 +2,7 @@ import sched
 from typing import Optional
 import torch as ch
 import torch.nn as nn
+from torch.nn import functional as F
 from torch.optim import lr_scheduler
 from pytorch_lightning.callbacks import Callback
 from pytorch_lightning.trainer.trainer import Trainer
@@ -56,10 +57,21 @@ def setup_model_for_finetuning(model: nn.Module,
         elif mode == 'first':
             chosen_neurons = ch.arange(num_neurons)
             new_layer = PartialLinear(chosen_neurons, linear)
-        elif mode == 'pca':
+        elif 'pca' in mode:
             assert 'projection_matrix' in layer_kwargs, \
                 'layer_kwargs must have projection_matrix for mode == pca'
+            if mode == 'pca-least':
+                layer_kwargs['which'] = 'least'
             new_layer = PCALinear(num_neurons, linear, **layer_kwargs)
+        elif mode == 'randproj':
+            assert 'generator' in layer_kwargs, \
+                'Must pass a generator for random projections'
+            layer_kwargs['projection_matrix'] = F.normalize(
+                ch.rand((in_fts, in_fts), generator=layer_kwargs.pop('generator')), 
+                dim=0)
+            new_layer = PCALinear(num_neurons, linear, **layer_kwargs)
+        else:
+            raise ValueError(f'Mode {mode} not recognized!')
     else:
         new_layer = nn.Linear(in_fts, num_classes)
     if inplace:

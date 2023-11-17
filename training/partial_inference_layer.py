@@ -37,15 +37,20 @@ class PartialLinear(ModifiedLinear):
 
 class PCALinear(ModifiedLinear):
 
-    def __init__(self, num_neurons: int, linear: nn.Linear, projection_matrix: torch.Tensor) -> None:
+    def __init__(self, num_neurons: int, linear: nn.Linear, projection_matrix: torch.Tensor, which='top') -> None:
         """
         projection_matrix: needs to be generated using PCA/some other dimensionality reduction method.
-            shape = num_fts x num_fts
+                           shape = num_fts x num_fts
+        which (str, one of 'top', 'least'): which principal components to take, `top` (default) will take top 
+                            `num_neurons` of principal components. 
         """
         super().__init__()
         self.num_neurons = num_neurons
         self.linear = linear
-        self.register_buffer('projection', projection_matrix[:,:self.num_neurons])
+        if which == 'top':
+            self.register_buffer('projection', projection_matrix[:,:self.num_neurons])
+        else:
+            self.register_buffer('projection', projection_matrix[:,-self.num_neurons:])
         self._copy_linear_features(linear)
 
     def forward(self, x):
